@@ -506,6 +506,13 @@ export const handler = async (event) => {
                     totalByTrip.actualEnd = momentTimezone(sameTripTrxs[0].endedAt).isValid()
                       ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm")
                       : "-";
+                      
+                      totalByTrip.actualEndWithSeconds = momentTimezone(
+                        sameTripTrxs[0].endedAt
+                        ).isValid()
+                        ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
+                        : "";
+
                     totalByTrip.serviceStart = momentTimezone(
                       sameTripTrxs[0].scheduledAt
                     ).isValid()
@@ -1101,13 +1108,6 @@ export const handler = async (event) => {
                       ).isValid()
                         ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm")
                         : "-";
-                        
-                        totalByTrip.actualEndWithSeconds = momentTimezone(
-                            sameTripTrxs[0].endedAt
-                            ).isValid()
-                            ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
-                            : "";
-
                       totalByTrip.serviceStart = momentTimezone(
                         sameTripTrxs[0].scheduledAt
                       ).isValid()
