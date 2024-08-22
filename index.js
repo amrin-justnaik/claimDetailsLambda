@@ -646,6 +646,11 @@ export const handler = async (event) => {
                         +timestampOfInterest,
                         "x"
                       ).format("HH:mm");
+
+                      totalByTrip.actualStartWithSeconds = momentTimezone(
+                        +timestampOfInterest,
+                        "x"
+                      ).format("HH:mm:ss");
       
                       const scheduledTimeP = momentTimezone(sameTripTrxs[0].scheduledAt);
                       const actualStartTimeP = momentTimezone(+timestampOfInterest, "x");
@@ -663,6 +668,7 @@ export const handler = async (event) => {
                           : "NOT PUNCTUAL";
                     } else {
                       totalByTrip.actualStart = "-";
+                      totalByTrip.actualStartWithSeconds = "-";
                       totalByTrip.punctuality = "NOT PUNCTUAL";
                     }
                     totalByTrip.startPoint =
@@ -1095,6 +1101,13 @@ export const handler = async (event) => {
                       ).isValid()
                         ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm")
                         : "-";
+                        
+                        totalByTrip.actualEndWithSeconds = momentTimezone(
+                            sameTripTrxs[0].endedAt
+                            ).isValid()
+                            ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
+                            : "";
+
                       totalByTrip.serviceStart = momentTimezone(
                         sameTripTrxs[0].scheduledAt
                       ).isValid()
@@ -1234,6 +1247,11 @@ export const handler = async (event) => {
                           +timestampOfInterest,
                           "x"
                         ).format("HH:mm");
+
+                        totalByTrip.actualStartWithSeconds = momentTimezone(
+                            +timestampOfInterest,
+                            "x"
+                        ).format("HH:mm:ss");
       
                         const scheduledTimeP = momentTimezone(sameTripTrxs[0].scheduledAt);
                         const actualStartTimeP = momentTimezone(+timestampOfInterest, "x");
@@ -1252,6 +1270,7 @@ export const handler = async (event) => {
                             : "NOT PUNCTUAL";
                       } else {
                         totalByTrip.actualStart = "-";
+                        totalByTrip.actualStartWithSeconds = "-";
                         totalByTrip.punctuality = "NOT PUNCTUAL";
                       }
       
