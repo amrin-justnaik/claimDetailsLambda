@@ -11,8 +11,8 @@ momentTimezone.tz.setDefault("Asia/Singapore");
 
 export const handler = async (event) => {
   // console.log("JSON.parse(JSON.stringify(event.payload))",JSON.parse(JSON.stringify(event.payload)));
-  console.log("event",event);
-  console.log("event.timestamp",event.timestamp);
+//   console.log("event",event);
+//   console.log("event.timestamp",event.timestamp);
    // Parse the payload from event.Payload
   //  const payload = JSON.parse(event.Payload);
 

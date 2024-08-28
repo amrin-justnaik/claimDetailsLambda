@@ -105,81 +105,168 @@ class Trip {
         //DONT!! dont apply device id by vehicle id, device id currently can connect to more than 1 vehicle
         const { from, to } = options
         let sqlQuery = `
-            SELECT
-            r.id,
-            r.short_name,
-            r.name as route_name,
-            t.direction_id,
-                t.id as trip_id,
-                t.started_at,
-                t.ended_at,
-                t.scheduled_at,
-                d.phone_number,
-                t.agency_trip_id,
-                t.scheduled_end_time,
-                j.user_id,
-                t.route_id,
-                t.vehicle_id,
-                v.registration_number,
-                t.driver_id,
-                j.id as journey_id,
-                j.start_stop_id,
-                j.end_stop_id,
-                d.first_name,
-                d.last_name,
-                d.staff_id,
-                j.payment_type,  
-                j.amount,	
-                f.amount as adult_fare,
-                f.child_amount as child_fare,
-                f.senior_amount as senior_fare,
-                f.oku_amount as oku_fare,
-                f.foreign_adult_amount as f_adult_fare,
-                f.foreign_child_amount as f_child_fare,
-                t.created_at,
-                t.ended_at,
-                t.trip_mileage,
-                j.created_at as j_created,
-                j.ended_at as j_ended,
-                j.no_of_pax,  
-                j.no_of_child,  
-                j.no_of_senior,  
-                j.no_of_oku,  
-                j.no_of_foreign_adult,
-                j.no_of_foreign_child,
-                dv.serial_number,
-                r.apad_polygon,
-                r.km_outbound,
-                r.km_inbound,
-                r.km_loop,
-                r.km_charge,
-                s.name as first_stop,
-                v.vehicle_age
-                
-            FROM
-                trips AS t
-                LEFT JOIN journeys AS j ON j.trip_id = t.id
-                LEFT JOIN routes AS r ON t.route_id = r.id
-                LEFT JOIN waypoints AS w ON w.route_id = r.id
-                LEFT JOIN stops AS s ON s.id = w.stop_id and w.route_id = r.id
-                LEFT JOIN drivers AS d ON t.driver_id = d.id
-                LEFT JOIN vehicles AS v ON t.vehicle_id = v.id
-                LEFT JOIN devices AS dv ON v.id = dv.vehicle_id
-                LEFT JOIN fares AS f ON j.start_stop_id = f.origin_id and j.end_stop_id = f.destination_id
-                LEFT JOIN agency AS ag ON ag.id = r.agency_id
-                
-            WHERE
-                r.agency_id = $1  AND  w.sequence = 1 AND ag.is_apad_report_allow = TRUE AND t.is_apad_active = TRUE
-        `
+            SELECT *
+            FROM (
+                SELECT DISTINCT ON (j.id)
+                    r.id,
+                    r.short_name,
+                    r.name AS route_name,
+                    t.direction_id,
+                    t.id AS trip_id,
+                    t.started_at,
+                    t.ended_at,
+                    t.scheduled_at,
+                    d.phone_number,
+                    t.agency_trip_id,
+                    t.scheduled_end_time,
+                    j.user_id,
+                    t.route_id,
+                    t.vehicle_id,
+                    v.registration_number,
+                    t.driver_id,
+                    j.id AS journey_id,
+                    j.start_stop_id,
+                    j.end_stop_id,
+                    d.first_name,
+                    d.last_name,
+                    d.staff_id,
+                    j.payment_type,
+                    j.amount,
+                    f.amount AS adult_fare,
+                    f.child_amount AS child_fare,
+                    f.senior_amount AS senior_fare,
+                    f.oku_amount AS oku_fare,
+                    f.foreign_adult_amount AS f_adult_fare,
+                    f.foreign_child_amount AS f_child_fare,
+                    t.created_at,
+                    t.ended_at,
+                    t.trip_mileage,
+                    j.created_at AS j_created,
+                    j.ended_at AS j_ended,
+                    j.no_of_pax,
+                    j.no_of_child,
+                    j.no_of_senior,
+                    j.no_of_oku,
+                    j.no_of_foreign_adult,
+                    j.no_of_foreign_child,
+                    dv.serial_number,
+                    r.apad_polygon,
+                    r.km_outbound,
+                    r.km_inbound,
+                    r.km_loop,
+                    r.km_charge,
+                    s.name AS first_stop,
+                    v.vehicle_age
+                FROM
+                    trips AS t
+                    LEFT JOIN journeys AS j ON j.trip_id = t.id
+                    LEFT JOIN routes AS r ON t.route_id = r.id
+                    LEFT JOIN waypoints AS w ON w.route_id = r.id
+                    LEFT JOIN stops AS s ON s.id = w.stop_id AND w.route_id = r.id
+                    LEFT JOIN drivers AS d ON t.driver_id = d.id
+                    LEFT JOIN vehicles AS v ON t.vehicle_id = v.id
+                    LEFT JOIN devices AS dv ON v.id = dv.vehicle_id
+                    LEFT JOIN fares AS f ON j.start_stop_id = f.origin_id AND j.end_stop_id = f.destination_id
+                    LEFT JOIN agency AS ag ON ag.id = r.agency_id
+                WHERE
+                    r.agency_id = $1
+                    AND w.sequence = 1
+                    AND ag.is_apad_report_allow = TRUE
+                    AND t.is_apad_active = TRUE
+        `;
+
         const queries = [agencyId]
         if (from && to) {
-            sqlQuery += "AND (((t.scheduled_at BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8')) AND (t.scheduled_end_time BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8'))) OR (t.started_at BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8')));"
+            sqlQuery += "AND (((t.scheduled_at BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8')) AND (t.scheduled_end_time BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8'))) OR (t.started_at BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8')))"
             queries.push(...[new Date(from) / 1000, new Date(to) / 1000])
         } else {
-            sqlQuery += "AND (((DATE(TIMEZONE('UTC+8', t.scheduled_at)) >= date_trunc('month', now()) - interval '2 month') AND (DATE(TIMEZONE('UTC+8', t.scheduled_end_time))  >= date_trunc('month', now()) - interval '2 month')) OR (DATE(TIMEZONE('UTC+8', t.started_at))  >= date_trunc('month', now()) - interval '2 month'));"
+            sqlQuery += "AND (((DATE(TIMEZONE('UTC+8', t.scheduled_at)) >= date_trunc('month', now()) - interval '2 month') AND (DATE(TIMEZONE('UTC+8', t.scheduled_end_time))  >= date_trunc('month', now()) - interval '2 month')) OR (DATE(TIMEZONE('UTC+8', t.started_at))  >= date_trunc('month', now()) - interval '2 month'))"
             // queries.push(new Date(timestamp) / 1000)
             //DATE(TIMEZONE('UTC+8', t.scheduled_at))
         }
+
+        sqlQuery += `
+        ) AS distinct_journeys
+            UNION ALL
+            SELECT *
+            FROM (
+                SELECT
+                    r.id,
+                    r.short_name,
+                    r.name AS route_name,
+                    t.direction_id,
+                    t.id AS trip_id,
+                    t.started_at,
+                    t.ended_at,
+                    t.scheduled_at,
+                    d.phone_number,
+                    t.agency_trip_id,
+                    t.scheduled_end_time,
+                    j.user_id,
+                    t.route_id,
+                    t.vehicle_id,
+                    v.registration_number,
+                    t.driver_id,
+                    j.id AS journey_id,
+                    j.start_stop_id,
+                    j.end_stop_id,
+                    d.first_name,
+                    d.last_name,
+                    d.staff_id,
+                    j.payment_type,
+                    j.amount,
+                    f.amount AS adult_fare,
+                    f.child_amount AS child_fare,
+                    f.senior_amount AS senior_fare,
+                    f.oku_amount AS oku_fare,
+                    f.foreign_adult_amount AS f_adult_fare,
+                    f.foreign_child_amount AS f_child_fare,
+                    t.created_at,
+                    t.ended_at,
+                    t.trip_mileage,
+                    j.created_at AS j_created,
+                    j.ended_at AS j_ended,
+                    j.no_of_pax,
+                    j.no_of_child,
+                    j.no_of_senior,
+                    j.no_of_oku,
+                    j.no_of_foreign_adult,
+                    j.no_of_foreign_child,
+                    dv.serial_number,
+                    r.apad_polygon,
+                    r.km_outbound,
+                    r.km_inbound,
+                    r.km_loop,
+                    r.km_charge,
+                    s.name AS first_stop,
+                    v.vehicle_age
+                FROM
+                    trips AS t
+                    LEFT JOIN journeys AS j ON j.trip_id = t.id
+                    LEFT JOIN routes AS r ON t.route_id = r.id
+                    LEFT JOIN waypoints AS w ON w.route_id = r.id
+                    LEFT JOIN stops AS s ON s.id = w.stop_id AND w.route_id = r.id
+                    LEFT JOIN drivers AS d ON t.driver_id = d.id
+                    LEFT JOIN vehicles AS v ON t.vehicle_id = v.id
+                    LEFT JOIN devices AS dv ON v.id = dv.vehicle_id
+                    LEFT JOIN fares AS f ON j.start_stop_id = f.origin_id AND j.end_stop_id = f.destination_id
+                    LEFT JOIN agency AS ag ON ag.id = r.agency_id
+                WHERE
+                    r.agency_id = $1
+                    AND w.sequence = 1
+                    AND ag.is_apad_report_allow = TRUE
+                    AND t.is_apad_active = TRUE
+                    AND j.id IS NULL
+        `;
+
+        if (from && to) {
+            sqlQuery += "AND (((t.scheduled_at BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8')) AND (t.scheduled_end_time BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8'))) OR (t.started_at BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8')))"
+        } else {
+            sqlQuery += "AND (((DATE(TIMEZONE('UTC+8', t.scheduled_at)) >= date_trunc('month', now()) - interval '2 month') AND (DATE(TIMEZONE('UTC+8', t.scheduled_end_time))  >= date_trunc('month', now()) - interval '2 month')) OR (DATE(TIMEZONE('UTC+8', t.started_at))  >= date_trunc('month', now()) - interval '2 month'))"
+        }
+
+        sqlQuery += `) AS all_null_journeys;`;
+
         const response = await runner.query(sqlQuery, queries);
         return response.rows.map(row => new TripClaimHistory(row));
     }
