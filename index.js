@@ -1249,9 +1249,15 @@ export const handler = async (event) => {
                         ).format("HH:mm");
 
                         totalByTrip.actualStartWithSeconds = momentTimezone(
-                            +timestampOfInterest,
-                            "x"
+                          +timestampOfInterest,
+                          "x"
                         ).format("HH:mm:ss");
+
+                        totalByTrip.actualEndWithSeconds = momentTimezone(
+                          sameTripTrxs[0].endedAt
+                          ).isValid()
+                          ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
+                          : "";
       
                         const scheduledTimeP = momentTimezone(sameTripTrxs[0].scheduledAt);
                         const actualStartTimeP = momentTimezone(+timestampOfInterest, "x");
@@ -1521,7 +1527,7 @@ export const handler = async (event) => {
                   // returnData.push(totalByTrip);
                   sDateT = totalByTrip.serviceDateEdited;
                   sDateEdited = `"${totalByTrip.serviceDateEdited} "`;
-                  data += `${sameTripTrxs[0].routeShortName},${sameTripTrxs[0].routeShortName} ${sameTripTrxs[0].routeName},${totalByTrip.direction},${tripNumber},${sDateEdited} ,${totalByTrip.startPoint},${sameTripTrxs[0].tripId},${totalByTrip.busPlate},${totalByTrip.busAge},${totalByTrip.kmRate},${totalByTrip.driverIdentification},${totalByTrip.busStops},${Number(totalByTrip.kmApad).toFixed(2)},${totalByTrip.totalClaim},${Number(totalByTrip.kmApadG).toFixed(2)},${totalByTrip.totalClaimG},${totalByTrip.status},${totalByTrip.statusDetail},${totalByTrip.kmApadB},${totalByTrip.kmRateB},,${totalByTrip.actualStartS},${totalByTrip.serviceStart},${totalByTrip.actualStart},${totalByTrip.salesStart},${totalByTrip.serviceEnd},${totalByTrip.actualEnd},${totalByTrip.salesEnd},${totalByTrip.punctuality}, ${totalByTrip.passenger},${totalByTrip.totalAmount.toFixed(2)},${totalByTrip.totalOn},${totalByTrip.transferCount},${totalByTrip.monthlyPass},${totalByTrip.noOfAdult},${totalByTrip.noOfChild},${totalByTrip.noOfSenior} ,${totalByTrip.noOfStudent},${totalByTrip.noOfOku},${totalByTrip.jkm}, ${totalByTrip.maim},\r`;
+                  data += `${sameTripTrxs[0].routeShortName},${sameTripTrxs[0].routeShortName} ${sameTripTrxs[0].routeName},${totalByTrip.direction},${tripNumber},${sDateEdited} ,${totalByTrip.startPoint},${sameTripTrxs[0].tripId},${totalByTrip.busPlate},${totalByTrip.busAge},${totalByTrip.kmRate},${totalByTrip.driverIdentification},${totalByTrip.busStops},${Number(totalByTrip.kmApad).toFixed(2)},${totalByTrip.totalClaim},${Number(totalByTrip.kmApadG).toFixed(2)},${totalByTrip.totalClaimG},${totalByTrip.status},${totalByTrip.statusDetail},${totalByTrip.kmApadB},${totalByTrip.kmRateB},,${totalByTrip.actualStartS},${totalByTrip.serviceStart},${totalByTrip.actualStartWithSeconds},${totalByTrip.salesStart},${totalByTrip.serviceEnd},${totalByTrip.actualEndWithSeconds},${totalByTrip.salesEnd},${totalByTrip.punctuality}, ${totalByTrip.passenger},${totalByTrip.totalAmount.toFixed(2)},${totalByTrip.totalOn},${totalByTrip.transferCount},${totalByTrip.monthlyPass},${totalByTrip.noOfAdult},${totalByTrip.noOfChild},${totalByTrip.noOfSenior} ,${totalByTrip.noOfStudent},${totalByTrip.noOfOku},${totalByTrip.jkm}, ${totalByTrip.maim},\r`;
                   subTotal = subTotal + totalByTrip.totalAmount;
                 });
                 //
