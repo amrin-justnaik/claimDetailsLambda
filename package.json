@@ -4,7 +4,8 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "zip": "zip -r \"output/claimDetails_$(date +'%Y-%m-%d').zip\" . --exclude './output/*'"
   },
   "author": "",
   "license": "ISC",
