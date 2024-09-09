@@ -4,24 +4,30 @@ import momentTimezone from 'moment-timezone';
 momentTimezone.tz.setDefault("Asia/Singapore");
 
 // Example event
+let from = "2024-06-05";
+let to = "2024-06-05";
+
+from += " 00:00:00";
+to += " 23:59:59";
+
 const event = {
-    "from": "2024-08-24 00:00:00",
-    "to": "2024-08-24 23:59:59",
-    "timestamp": "1722240595",
+    "timestamp": "2024-09-06T03:56:50.279Z",
+    "from": "2024-09-05 00:00:00",
+    "to": "2024-09-05 23:59:59",
     "route": null,
     "amPm": "All",
-    "selectFromDate": "2024-08-24 00:00:00",
-    "selectToDate": "2024-08-24 23:59:59",
+    "selectFromDate": "2024-09-05 00:00:00",
+    "selectToDate": "2024-09-05 23:59:59",
     "vehicle": null,
     "driver": null,
     "weekendWeekday": "All",
     "paidBy": "All",
-    "agencyId": 10
+    "agencyId": 42
 }
 
 console.time("claim");
 handler(event).then(response => {
-    console.log(response)
+    console.log(response.body.returnData)
 }).catch(error => {
     console.error('Error:', error);
 }).finally(() => {

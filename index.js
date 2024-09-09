@@ -136,14 +136,20 @@ export const handler = async (event) => {
             try {
                 const { agencyId: agency_id } = event;
                 if (!agency_id) {
-                    return res.unAuthorised("no agency found");
+                    return {
+                        statusCode: 500,
+                        body: JSON.stringify({ message: "No Agency Found" }),
+                    };
                 }
 
                 const routeFetch = uniqueRouteIds.map(async (routeId) => {
                     try {
                         const route = await Route.findOne({ id: routeId, agency_id });
                         if (!route) {
-                            return res.notFound("Route not found");
+                            return {
+                                statusCode: 500,
+                                body: JSON.stringify({ message: "Route Not Found" }),
+                            };
                         }
 
                         const stops = (await Stop.findByRoutes(route.id)) || [];
@@ -167,7 +173,10 @@ export const handler = async (event) => {
                 });
             } catch (error) {
                 console.error("Error in fetching routes and stops:", error);
-                return res.status(500).send("Internal Server Error");
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({ message: "Interval Server Error" }),
+                };
             }
 
             const uniqueTripIds = [
@@ -188,11 +197,17 @@ export const handler = async (event) => {
             try {
                 const { agencyId: agency_id } = event;
                 if (!agency_id) {
-                    return res.status(401).send("Unauthorized: no agency found");
+                    return {
+                        statusCode: 401,
+                        body: JSON.stringify({ message: "Unauthorized: No Agency Found" }),
+                    };
                 }
 
                 if (!uniqueTripIds || uniqueTripIds.length === 0) {
-                    return res.status(400).send("Please provide valid trip ids");
+                    return {
+                        statusCode: 400,
+                        body: JSON.stringify({ message: "Please provide trip ids" }),
+                    };
                 }
 
                 const tripFetch = uniqueTripIds.map((tripId) =>
@@ -215,7 +230,10 @@ export const handler = async (event) => {
                 });
             } catch (error) {
                 console.error("Error in fetching trip logs:", error);
-                return res.status(500).send("Internal Server Error");
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({ message: "Interval Server Error" }),
+                };
             }
         } catch (error) {
         } finally {
@@ -368,6 +386,8 @@ export const handler = async (event) => {
             return new_obj;
         }
         const groupedTestByRouteRev = dict_reverse(groupedTestByRoute);
+
+        // console.log(groupedTestByRouteRev);
         Object.entries(groupedTestByRouteRev).forEach(([localTimeGroup, trxs]) => {
             const groupedData = _.groupBy(trxs, "localDate");
             //
@@ -460,10 +480,12 @@ export const handler = async (event) => {
 
         const returnData2 = [];
 
+        // console.log(returnData[0].trxs)
         //
         returnData.forEach(({ trxs }) => {
             const uniqueTrips = Object.values(_.groupBy(trxs, "tripId"));
             uniqueTrips.forEach((sameTripTrxs) => {
+                
                 //
                 const totalByTrip = {
                     totalPax: 0,
@@ -585,6 +607,7 @@ export const handler = async (event) => {
                         totalByTrip.cashlessOku += userId ? noOfOku : 0;
                         totalByTrip.cashlessFAdult += userId ? noOfForeignAdult : 0;
                         totalByTrip.cashlessFChild += userId ? noOfForeignChild : 0;
+                        if (sameTripTrxs.some(t => t.adhoc)) totalByTrip.remark = 'Ad-hoc';
 
                         if (tripLog[sameTripTrxs[0].tripId]) {
                             const tripLogsToScan = tripLog[sameTripTrxs[0].tripId];
@@ -718,7 +741,6 @@ export const handler = async (event) => {
                                 totalByTrip.actualEndWithSeconds = '-';        
                             }
 
-                            if (sameTripTrxs[0].adhoc) totalByTrip.remark = 'Ad-hoc';
                             totalByTrip.punctuality = "NOT PUNCTUAL";
                         }
                         totalByTrip.startPoint =
