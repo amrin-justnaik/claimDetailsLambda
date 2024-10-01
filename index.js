@@ -558,6 +558,9 @@ export const handler = async (event) => {
                             ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
                             : "";
 
+                        if (totalByTrip.actualEndWithSeconds == null || totalByTrip.actualEndWithSeconds == "" || totalByTrip.actualEndWithSeconds == NaN || totalByTrip.actualEndWithSeconds == undefined)
+                            totalByTrip.actualEndWithSeconds = "-";
+
                         totalByTrip.serviceStart = momentTimezone(
                             sameTripTrxs[0].scheduledAt
                         ).isValid()
@@ -689,6 +692,23 @@ export const handler = async (event) => {
                             // If the timestamp is still null, take the time of the 1st occurrence
                             if (timestampOfInterest === null && tripLogsToScan.length > 0) {
                                 timestampOfInterest = tripLogsToScan[0].timestamp;
+
+                                const timestampDate =  momentTimezone(+timestampOfInterest,"x").format("DD/MM/YYYY");
+
+                                if (timestampDate != momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")) {
+                                    console.log('time: ', timestampDate);
+                                    console.log('need to search for the right date');
+
+                                    const matchingLog = tripLogsToScan.find(log => 
+                                        momentTimezone(+log.timestamp, "x").format("DD/MM/YYYY") === 
+                                        momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
+                                    );
+                            
+                                    if (matchingLog) {
+                                        timestampOfInterest = matchingLog.timestamp;
+                                        console.log('Found matching date:', momentTimezone(+matchingLog.timestamp, "x").format("DD/MM/YYYY"));
+                                    }
+                                }
                             }
 
                             totalByTrip.actualStart = momentTimezone(
@@ -1305,11 +1325,25 @@ export const handler = async (event) => {
                                         }
                                     }
 
-                                    if (
-                                        timestampOfInterest === null &&
-                                        tripLogsToScan.length > 0
-                                    ) {
+                                    if (timestampOfInterest === null && tripLogsToScan.length > 0) {
                                         timestampOfInterest = tripLogsToScan[0].timestamp;
+
+                                        const timestampDate =  momentTimezone(+timestampOfInterest,"x").format("DD/MM/YYYY");
+
+                                        if (timestampDate != momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")) {
+                                            console.log('time: ', timestampDate);
+                                            console.log('need to search for the right date');
+
+                                            const matchingLog = tripLogsToScan.find(log => 
+                                                momentTimezone(+log.timestamp, "x").format("DD/MM/YYYY") === 
+                                                momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
+                                            );
+                                    
+                                            if (matchingLog) {
+                                                timestampOfInterest = matchingLog.timestamp;
+                                                console.log('Found matching date:', momentTimezone(+matchingLog.timestamp, "x").format("DD/MM/YYYY"));
+                                            }
+                                        }
                                     }
 
                                     totalByTrip.actualStart = momentTimezone(
@@ -1627,6 +1661,10 @@ export const handler = async (event) => {
                         // returnData.push(totalByTrip);
                         sDateT = totalByTrip.serviceDateEdited;
                         sDateEdited = `"${totalByTrip.serviceDateEdited} "`;
+
+                        if (totalByTrip.actualEndWithSeconds == null || totalByTrip.actualEndWithSeconds == "" || totalByTrip.actualEndWithSeconds == NaN || totalByTrip.actualEndWithSeconds == undefined)
+                            totalByTrip.actualEndWithSeconds = "-";
+
                         data += `${sameTripTrxs[0].routeShortName},${sameTripTrxs[0].routeShortName
                             } ${sameTripTrxs[0].routeName},${totalByTrip.direction
                             },${tripNumber},${sDateEdited} ,${totalByTrip.startPoint},${sameTripTrxs[0].tripId
