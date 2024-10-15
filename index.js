@@ -661,7 +661,7 @@ export const handler = async (event) => {
 
                                 if (!stopNameConditionSatisfied) {
                                     // Check the condition only if it hasn't been satisfied yet
-                                    if (record.stopName === startPoint) {
+                                    if (record.stopName.trim().toLowerCase() === startPoint.trim().toLowerCase()) {
                                         stopNameConditionSatisfied = true;
                                     }
                                 }
@@ -1299,7 +1299,7 @@ export const handler = async (event) => {
                                         }
 
                                         if (!stopNameConditionSatisfied) {
-                                            if (record.stopName === startPoint) {
+                                            if (record.stopName.trim().toLowerCase() === startPoint.trim().toLowerCase()) {
                                                 stopNameConditionSatisfied = true;
                                             }
                                         }
