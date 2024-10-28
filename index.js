@@ -647,7 +647,7 @@ export const handler = async (event) => {
                             let highestSequence = 0; // Initialize highestSequence
 
                             // Analyze the first 200 records in tripLogsToScan
-                            for (let i = 0; i < Math.min(200, tripLogsToScan?.length); i++) {
+                            for (let i = 0; i < Math.min(250, tripLogsToScan?.length); i++) {
                                 const record = tripLogsToScan[i];
 
                                 if (
@@ -1283,11 +1283,7 @@ export const handler = async (event) => {
                                     let stopNameConditionSatisfied = false;
                                     let highestSequence = 0; // Initialize highestSequence
 
-                                    for (
-                                        let i = 0;
-                                        i < Math.min(200, tripLogsToScan?.length);
-                                        i++
-                                    ) {
+                                    for (let i = 0; i < Math.min(250, tripLogsToScan?.length); i++) {
                                         const record = tripLogsToScan[i];
                                         if (
                                             record.sequence &&
