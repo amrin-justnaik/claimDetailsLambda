@@ -1,11 +1,14 @@
 import _ from "lodash";
-import { Trip, Route, Stop, ScheduleV2Timetable } from "./models/index.js";
+import { Trip, Route, Stop, ScheduleV2Timetable, LambdaJobQueue } from "./models/index.js";
 import { Convert, Utils } from "./helpers/index.js";
+import { saveToS3 } from './buckets/bucket.js';
 
 import momentTimezone from "moment-timezone";
 import * as geolib from "geolib";
 import PolylineUtils from "@mapbox/polyline";
 momentTimezone.tz.setDefault("Asia/Singapore");
+
+import zlib from 'zlib';
 
 export const handler = async (event) => {
     // console.log("JSON.parse(JSON.stringify(event.payload))",JSON.parse(JSON.stringify(event.payload)));
@@ -27,6 +30,8 @@ export const handler = async (event) => {
         weekendWeekday = null,
         paidBy = null,
         agencyId = null,
+        key,
+        jobId
     } = event;
 
     // Your Lambda function logic here
@@ -50,6 +55,14 @@ export const handler = async (event) => {
         };
 
     try {
+        const jobQueue = await LambdaJobQueue.update('IN_PROGRESS', jobId);
+        if (!jobQueue) {
+            return {
+                statusCode: 500,
+                body: JSON.stringify({ message: 'Job ID not found' })
+            };
+        }
+
         const claimdata2 = await Trip.getAgencyClaimDetailsReportByDate(
             agencyId,
             timestamp,
@@ -1758,11 +1771,28 @@ export const handler = async (event) => {
             },0,0,${totallTG},${totallCTG},${totallSTG},0,${totallOTG},0,0\r\n`;
         // data += `, ,,,Grand TOTAL ,,,,,,,,${totalBusStopT},${totalTravelKmT},${totalClaimT},${TravelGpsT},${totalClaimGpsT},,,,,,,,,,,,,0,${tAmount},${totallT + totallCT + totallST + totallOT},0,0,${totallT},${totallCT},${totallST},0,${totallOT},0,0\r\n\n`
         //
+
+        const jsonResponse = JSON.stringify({ returnData: returnData2, exportData: data }).toString('base64');
+
+        // Compress the JSON string
+        const compressedData = zlib.gzipSync(jsonResponse);
+
+        try {
+            await saveToS3('justnaik-lambda-reports', key, compressedData);
+            const jobQueue = await LambdaJobQueue.update('COMPLETED', jobId);
+        } catch (error) { 
+            const jobQueue = await LambdaJobQueue.update('FAILED', jobId);
+            console.error('Error uploading to bucket: ', error);
+            return {
+                statusCode: 500,
+                body: JSON.stringify({ message: 'Internal Server Error', error: error.message })
+            };
+        }
+
         return {
             statusCode: 200,
-            body: { returnData: returnData2, exportData: data },
+            body: compressedData
         };
-        //   return res.ok({returnData:returnData2,exportData : data});
     } catch (error) {
         return {
             statusCode: 500,

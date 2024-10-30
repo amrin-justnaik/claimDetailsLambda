@@ -128,4 +128,13 @@ const getFeedbackAttachmentUrl = async (fileName) => {
     })
 }
 
-export { GTFSBucketAWS, GTFSBucketLocal, agencyPhotoBucketAWS, agencyPhotoBucketLocal, getGTFSFromBucket, getTripLogFromBucket, getFeedbackAttachmentUrl, getTripLogList };
+const saveToS3 = async (bucket, key, data) => {
+    return await s3.putObject({
+        Bucket: bucket,
+        Key: key + '.gz',
+        Body: data,
+        ContentType: 'application/gzip',  // Indicates gzip content type
+    }).promise();
+}
+
+export { GTFSBucketAWS, GTFSBucketLocal, agencyPhotoBucketAWS, agencyPhotoBucketLocal, getGTFSFromBucket, getTripLogFromBucket, getFeedbackAttachmentUrl, getTripLogList, saveToS3 };

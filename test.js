@@ -3,35 +3,32 @@ import { handler } from './index.js';  // Adjust the path if necessary
 import momentTimezone from 'moment-timezone';
 momentTimezone.tz.setDefault("Asia/Singapore");
 
-// Example event
-let from = "2024-06-05";
-let to = "2024-06-05";
-
-from += " 00:00:00";
-to += " 23:59:59";
-
 const event = {
     "timestamp": "2024-09-06T03:56:50.279Z",
-    "from": "2024-09-05 00:00:00",
-    "to": "2024-09-05 23:59:59",
+    "from": "2024-10-01 00:00:00",
+    "to": "2024-10-31 23:59:59",
     "route": null,
     "amPm": "All",
-    "selectFromDate": "2024-09-05 00:00:00",
-    "selectToDate": "2024-09-05 23:59:59",
+    "selectFromDate": "2024-10-01 00:00:00",
+    "selectToDate": "2024-10-31 23:59:59",
     "vehicle": null,
     "driver": null,
     "weekendWeekday": "All",
     "paidBy": "All",
-    "agencyId": 42
+    "agencyId": 38
 }
 
 console.time("claim");
 handler(event).then(response => {
-    console.log(response.body.returnData)
+    const bufferSize = response.body.length;  // Returns the size in bytes
+    console.log(`Buffer size: ${bufferSize} bytes`);
+
+    const bufferSizeInKB = response.body.length / 1024;
+    console.log(`Buffer size: ${bufferSizeInKB.toFixed(2)} KB`);
 }).catch(error => {
     console.error('Error:', error);
 }).finally(() => {
-    console.timeEnd("claim");
+    console.timeEnd('claim');
 });
 
 /*
