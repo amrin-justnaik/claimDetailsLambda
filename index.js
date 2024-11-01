@@ -55,12 +55,14 @@ export const handler = async (event) => {
         };
 
     try {
-        const jobQueue = await LambdaJobQueue.update('IN_PROGRESS', jobId);
-        if (!jobQueue) {
-            return {
-                statusCode: 500,
-                body: JSON.stringify({ message: 'Job ID not found' })
-            };
+        if (jobId) {
+            const jobQueue = await LambdaJobQueue.update('IN_PROGRESS', jobId);
+            if (!jobQueue) {
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({ message: 'Job ID not found' })
+                };
+            }
         }
 
         const claimdata2 = await Trip.getAgencyClaimDetailsReportByDate(
@@ -1777,22 +1779,30 @@ export const handler = async (event) => {
         // Compress the JSON string
         const compressedData = zlib.gzipSync(jsonResponse);
 
-        try {
-            await saveToS3('justnaik-lambda-reports', key, compressedData);
-            const jobQueue = await LambdaJobQueue.update('COMPLETED', jobId);
-        } catch (error) { 
-            const jobQueue = await LambdaJobQueue.update('FAILED', jobId);
-            console.error('Error uploading to bucket: ', error);
+        if (jobId && key) {
+            try {
+                await saveToS3('justnaik-lambda-reports', key, compressedData);
+                const jobQueue = await LambdaJobQueue.update('COMPLETED', jobId);
+            } catch (error) { 
+                const jobQueue = await LambdaJobQueue.update('FAILED', jobId);
+                console.error('Error uploading to bucket: ', error);
+                return {
+                    statusCode: 500,
+                    body: JSON.stringify({ message: 'Internal Server Error', error: error.message })
+                };
+            }
+
             return {
-                statusCode: 500,
-                body: JSON.stringify({ message: 'Internal Server Error', error: error.message })
+                statusCode: 200,
+                body: compressedData
+            };
+        } else {
+            return {
+                statusCode: 200,
+                body: { returnData: returnData2 }
             };
         }
 
-        return {
-            statusCode: 200,
-            body: compressedData
-        };
     } catch (error) {
         return {
             statusCode: 500,
