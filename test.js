@@ -5,17 +5,7 @@ momentTimezone.tz.setDefault("Asia/Singapore");
 
 const event = {
     "timestamp": "2024-09-06T03:56:50.279Z",
-    "from": "2024-10-01 00:00:00",
-    "to": "2024-10-31 23:59:59",
-    "route": null,
-    "amPm": "All",
-    "selectFromDate": "2024-10-01 00:00:00",
-    "selectToDate": "2024-10-31 23:59:59",
-    "vehicle": null,
-    "driver": null,
-    "weekendWeekday": "All",
-    "paidBy": "All",
-    "agencyId": 38
+    "to": "2024-12-18 23:59:59", "amPm": "All", "from": "2024-12-18 00:00:00", "route": null, "driver": null, "paidBy": "All", "vehicle": null, "agencyId": 40, "selectToDate": "2024-12-18 23:59:59", "selectFromDate": "2024-12-18 00:00:00", "weekendWeekday": "All",
 }
 
 console.time("claim");

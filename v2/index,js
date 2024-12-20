@@ -3,7 +3,6 @@ import { Trip, Route, Stop, ScheduleV2Timetable, LambdaJobQueue } from "./models
 import { Convert, Utils } from "./helpers/index.js";
 import { saveToS3 } from './buckets/bucket.js';
 
-import moment from "moment";
 import momentTimezone from "moment-timezone";
 import * as geolib from "geolib";
 import PolylineUtils from "@mapbox/polyline";
@@ -12,12 +11,6 @@ momentTimezone.tz.setDefault("Asia/Singapore");
 import zlib from 'zlib';
 
 export const handler = async (event) => {
-    // console.log("JSON.parse(JSON.stringify(event.payload))",JSON.parse(JSON.stringify(event.payload)));
-    //   console.log("event",event);
-    //   console.log("event.timestamp",event.timestamp);
-    // Parse the payload from event.Payload
-    //  const payload = JSON.parse(event.Payload);
-
     const {
         from,
         to,
@@ -36,10 +29,6 @@ export const handler = async (event) => {
     } = event;
 
     // Your Lambda function logic here
-    console.log(
-        `from: ${from}, to: ${to}, timestamp: ${timestamp}, route: ${route}`
-    );
-
     let tripLog = {};
     let routeStops = {};
 
@@ -82,6 +71,7 @@ export const handler = async (event) => {
 
             const transactionWithStartFiltered = claimdata2.filter(
                 ({ startedAt, endedAt, scheduledAt }) =>
+                    startedAt !== null &&
                     (momentTimezone(endedAt).diff(momentTimezone(startedAt), "minutes") >=
                         10 &&
                         momentTimezone(startedAt).isSameOrAfter(
@@ -501,7 +491,7 @@ export const handler = async (event) => {
         returnData.forEach(({ trxs }) => {
             const uniqueTrips = Object.values(_.groupBy(trxs, "tripId"));
             uniqueTrips.forEach((sameTripTrxs) => {
-
+                
                 //
                 const totalByTrip = {
                     totalPax: 0,
@@ -631,18 +621,6 @@ export const handler = async (event) => {
                         if (tripLog[sameTripTrxs[0].tripId]) {
                             const tripLogsToScan = tripLog[sameTripTrxs[0].tripId];
 
-                            const scheduledTimeStart = sameTripTrxs[0].scheduledAt;
-                            const scheduledMoment = moment(scheduledTimeStart);
-
-                            // Filter tripLogsToScan to only include rows where the timestamp meets the condition
-                            const filteredLogs = tripLogsToScan.filter((record) => {
-                                const recordMoment = moment(parseInt(record.timestamp, 10));
-                                const condition = recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
-
-                                // Check if record timestamp is within the required range 15 minutes before scheduled at and after 
-                                return recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
-                            });
-
                             const startPoint =
                                 routeStops[sameTripTrxs[0].routeId]?.filter(
                                     ({ directionId }) => directionId == sameTripTrxs[0].obIb
@@ -674,15 +652,9 @@ export const handler = async (event) => {
                             let stopNameConditionSatisfied = false;
                             let highestSequence = 0; // Initialize highestSequence
 
-                            if (filteredLogs?.length > 0 && tripLogsToScan?.length > 0) {
-                                filteredLogs[0].sequence = tripLogsToScan[0].sequence
-                                filteredLogs[0].stopId = tripLogsToScan[0].stopId
-                                filteredLogs[0].stopName = tripLogsToScan[0].stopName
-                            }
-
                             // Analyze the first 200 records in tripLogsToScan
-                            for (let i = 0; i < Math.min(250, filteredLogs?.length); i++) {
-                                const record = filteredLogs[i];
+                            for (let i = 0; i < Math.min(250, tripLogsToScan?.length); i++) {
+                                const record = tripLogsToScan[i];
 
                                 if (
                                     record.sequence &&
@@ -710,9 +682,9 @@ export const handler = async (event) => {
                                                 // If sequence has been encountered, take the timestamp of the first occurrence in history log
                                                 timestampOfInterest = record.timestamp;
                                             } else if (highestSequence == startSequence + 1) {
-                                                timestampOfInterest = filteredLogs[i - 4].timestamp;
+                                                timestampOfInterest = tripLogsToScan[i - 4].timestamp;
                                             } else {
-                                                timestampOfInterest = filteredLogs[0].timestamp;
+                                                timestampOfInterest = tripLogsToScan[0].timestamp;
                                             }
                                             break;
                                         }
@@ -724,20 +696,20 @@ export const handler = async (event) => {
                             }
 
                             // If the timestamp is still null, take the time of the 1st occurrence
-                            if (timestampOfInterest === null && filteredLogs.length > 0) {
-                                timestampOfInterest = filteredLogs[0].timestamp;
+                            if (timestampOfInterest === null && tripLogsToScan.length > 0) {
+                                timestampOfInterest = tripLogsToScan[0].timestamp;
 
-                                const timestampDate = momentTimezone(+timestampOfInterest, "x").format("DD/MM/YYYY");
+                                const timestampDate =  momentTimezone(+timestampOfInterest,"x").format("DD/MM/YYYY");
 
                                 if (timestampDate != momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")) {
                                     console.log('time: ', timestampDate);
                                     console.log('need to search for the right date');
 
-                                    const matchingLog = filteredLogs.find(log =>
-                                        momentTimezone(+log.timestamp, "x").format("DD/MM/YYYY") ===
+                                    const matchingLog = tripLogsToScan.find(log => 
+                                        momentTimezone(+log.timestamp, "x").format("DD/MM/YYYY") === 
                                         momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
                                     );
-
+                            
                                     if (matchingLog) {
                                         timestampOfInterest = matchingLog.timestamp;
                                         console.log('Found matching date:', momentTimezone(+matchingLog.timestamp, "x").format("DD/MM/YYYY"));
@@ -758,9 +730,9 @@ export const handler = async (event) => {
                             totalByTrip.actualEndWithSeconds = momentTimezone(
                                 sameTripTrxs[0].endedAt
                             ).isValid()
-                                ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
-                                : "";
-
+                            ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
+                            : "";
+    
                             const scheduledTimeP = momentTimezone(
                                 sameTripTrxs[0].scheduledAt
                             );
@@ -787,12 +759,12 @@ export const handler = async (event) => {
                                 totalByTrip.actualEndWithSeconds = momentTimezone(
                                     sameTripTrxs[0].endedAt
                                 ).isValid()
-                                    ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
-                                    : "";
+                                ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
+                                : "";
                             } else {
                                 totalByTrip.actualStart = '-';
                                 totalByTrip.actualStartWithSeconds = '-';
-                                totalByTrip.actualEndWithSeconds = '-';
+                                totalByTrip.actualEndWithSeconds = '-';        
                             }
 
                             totalByTrip.punctuality = "NOT PUNCTUAL";
@@ -1283,18 +1255,7 @@ export const handler = async (event) => {
 
                                 if (tripLog[sameTripTrxs[0].tripId]) {
                                     const tripLogsToScan = tripLog[sameTripTrxs[0].tripId];
-
-                                    const scheduledTimeStart = sameTripTrxs[0].scheduledAt;
-                                    const scheduledMoment = moment(scheduledTimeStart);
-
-                                    // Filter tripLogsToScan to only include rows where the timestamp meets the condition
-                                    const filteredLogs = tripLogsToScan.filter((record) => {
-                                        const recordMoment = moment(parseInt(record.timestamp, 10));
-                                        const condition = recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
-
-                                        // Check if record timestamp is within the required range 15 minutes before scheduled at and after 
-                                        return recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
-                                    });
+                                    const routeStopsData = routeStops[sameTripTrxs[0].routeId];
 
                                     const startPoint =
                                         routeStops[sameTripTrxs[0].routeId]?.filter(
@@ -1309,7 +1270,6 @@ export const handler = async (event) => {
                                                     return obj.sequence < res.sequence ? obj : res;
                                                 })?.name
                                             : "";
-
                                     const startSequence =
                                         routeStops[sameTripTrxs[0].routeId]?.filter(
                                             ({ directionId }) => directionId == sameTripTrxs[0].obIb
@@ -1329,15 +1289,8 @@ export const handler = async (event) => {
                                     let stopNameConditionSatisfied = false;
                                     let highestSequence = 0; // Initialize highestSequence
 
-                                    if (filteredLogs?.length > 0 && tripLogsToScan?.length > 0) {
-                                        filteredLogs[0].sequence = tripLogsToScan[0].sequence
-                                        filteredLogs[0].stopId = tripLogsToScan[0].stopId
-                                        filteredLogs[0].stopName = tripLogsToScan[0].stopName
-                                    }
-
-                                    for (let i = 0; i < Math.min(200, filteredLogs?.length); i++) {
-                                        const record = filteredLogs[i];
-
+                                    for (let i = 0; i < Math.min(250, tripLogsToScan?.length); i++) {
+                                        const record = tripLogsToScan[i];
                                         if (
                                             record.sequence &&
                                             record.sequence > highestSequence &&
@@ -1348,7 +1301,7 @@ export const handler = async (event) => {
                                         }
 
                                         if (!stopNameConditionSatisfied) {
-                                            if (record.stopName === startPoint) {
+                                            if (record.stopName.trim().toLowerCase() === startPoint.trim().toLowerCase()) {
                                                 stopNameConditionSatisfied = true;
                                             }
                                         }
@@ -1362,9 +1315,9 @@ export const handler = async (event) => {
                                                         timestampOfInterest = record.timestamp;
                                                     } else if (highestSequence == startSequence + 1) {
                                                         timestampOfInterest =
-                                                            filteredLogs[i - 4].timestamp;
+                                                            tripLogsToScan[i - 4].timestamp;
                                                     } else {
-                                                        timestampOfInterest = filteredLogs[0].timestamp;
+                                                        timestampOfInterest = tripLogsToScan[0].timestamp;
                                                     }
                                                     break;
                                                 }
@@ -1374,8 +1327,25 @@ export const handler = async (event) => {
                                         }
                                     }
 
-                                    if (timestampOfInterest === null && filteredLogs.length > 0) {
-                                        timestampOfInterest = filteredLogs[0].timestamp;
+                                    if (timestampOfInterest === null && tripLogsToScan.length > 0) {
+                                        timestampOfInterest = tripLogsToScan[0].timestamp;
+
+                                        const timestampDate =  momentTimezone(+timestampOfInterest,"x").format("DD/MM/YYYY");
+
+                                        if (timestampDate != momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")) {
+                                            console.log('time: ', timestampDate);
+                                            console.log('need to search for the right date');
+
+                                            const matchingLog = tripLogsToScan.find(log => 
+                                                momentTimezone(+log.timestamp, "x").format("DD/MM/YYYY") === 
+                                                momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
+                                            );
+                                    
+                                            if (matchingLog) {
+                                                timestampOfInterest = matchingLog.timestamp;
+                                                console.log('Found matching date:', momentTimezone(+matchingLog.timestamp, "x").format("DD/MM/YYYY"));
+                                            }
+                                        }
                                     }
 
                                     totalByTrip.actualStart = momentTimezone(
@@ -1391,11 +1361,17 @@ export const handler = async (event) => {
                                     totalByTrip.actualEndWithSeconds = momentTimezone(
                                         sameTripTrxs[0].endedAt
                                     ).isValid()
-                                        ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
-                                        : "";
+                                    ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
+                                    : "";
+            
 
-                                    const scheduledTimeP = momentTimezone(sameTripTrxs[0].scheduledAt);
-                                    const actualStartTimeP = momentTimezone(+timestampOfInterest, "x");
+                                    const scheduledTimeP = momentTimezone(
+                                        sameTripTrxs[0].scheduledAt
+                                    );
+                                    const actualStartTimeP = momentTimezone(
+                                        +timestampOfInterest,
+                                        "x"
+                                    );
 
                                     const isPunctual =
                                         actualStartTimeP?.isBetween(
@@ -1416,8 +1392,8 @@ export const handler = async (event) => {
                                         totalByTrip.actualEndWithSeconds = momentTimezone(
                                             sameTripTrxs[0].endedAt
                                         ).isValid()
-                                            ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
-                                            : "";
+                                        ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
+                                        : "";
                                     } else {
                                         totalByTrip.actualStart = '-';
                                         totalByTrip.actualStartWithSeconds = '-';
@@ -1798,7 +1774,7 @@ export const handler = async (event) => {
             try {
                 await saveToS3('justnaik-lambda-reports', key, compressedData);
                 const jobQueue = await LambdaJobQueue.update('COMPLETED', jobId);
-            } catch (error) {
+            } catch (error) { 
                 const jobQueue = await LambdaJobQueue.update('FAILED', jobId);
                 console.error('Error uploading to bucket: ', error);
                 return {
