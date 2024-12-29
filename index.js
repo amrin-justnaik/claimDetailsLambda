@@ -1,5 +1,5 @@
 import _ from "lodash";
-import { Trip, Route, Stop, ScheduleV2Timetable, LambdaJobQueue } from "./models/index.js";
+import { Trip, Route, Stop, ScheduleV2Timetable, LambdaJobQueue, Agency } from "./models/index.js";
 import { Convert, Utils } from "./helpers/index.js";
 import { saveToS3 } from './buckets/bucket.js';
 
@@ -72,13 +72,32 @@ export const handler = async (event) => {
             { from, to }
         );
 
+        const agency = await Agency.findOne({ id: agencyId });
+
+        const usingOfflineTrip = agency.usingOfflineTrip;
         let transactionWithScheduler;
+        let transactionWithStartFiltered;
+        let t;
+        let timetable;
         try {
             const whereQuery = { agency_id: agencyId };
 
             const timetableData = await ScheduleV2Timetable.findAllDistinct(
                 whereQuery
             );
+
+            const schedulesForRoute = _.groupBy(timetableData, 'route_id');
+            const schedulesForRouteDirection = _.mapValues(schedulesForRoute, (routeData) =>
+                _.groupBy(routeData, 'direction_id')
+            );
+
+            const schedulesGroupedByDay = _.mapValues(schedulesForRouteDirection, (directionData) =>
+                _.mapValues(directionData, (directionGroup) =>
+                    _.groupBy(directionGroup, 'day')
+                )
+            );
+
+            timetable = schedulesGroupedByDay;
 
             const transactionWithStartFiltered = claimdata2.filter(
                 ({ startedAt, endedAt, scheduledAt }) =>
@@ -92,7 +111,9 @@ export const handler = async (event) => {
                     )
             );
 
-            transactionWithScheduler = transactionWithStartFiltered.map((trx) => {
+            t = usingOfflineTrip ? transactionWithStartFiltered.filter(item => item.startedAt !== null) : transactionWithStartFiltered;
+
+            transactionWithScheduler = t.map((trx) => {
                 if (trx.startedAt && !trx.scheduledAt) {
                     let start_time = momentTimezone(String(trx.startedAt)).format(
                         "HH:mm:ss"
@@ -495,6 +516,224 @@ export const handler = async (event) => {
         });
 
         const returnData2 = [];
+        const RD = returnData;
+
+        // TODO ----- Check here? 
+        if (usingOfflineTrip) {
+            let idx = 1;
+            RD.forEach(({ trxs, datetime_ }) => {
+                let scheduleDay;
+    
+                try {
+                    const day = (datetime_.match(/\((.*?)\)/)[1].toLowerCase());
+    
+                    if (day == 'sun') scheduleDay = 'sunday';
+                    else if (day == 'mon') scheduleDay = 'monday';
+                    else if (day == 'tue') scheduleDay = 'tuesday';
+                    else if (day == 'wed') scheduleDay = 'wednesday';
+                    else if (day == 'thu') scheduleDay = 'thursday';
+                    else if (day == 'fri') scheduleDay = 'friday';
+                    else if (day == 'sat') scheduleDay = 'saturday';
+                    else scheduleDay = '';
+    
+                    // console.log('scheuled day: ', scheduleDay);
+                    // console.log('day: ', day);
+
+                    if (!scheduleDay) return;
+                    
+                    const groupedTrxsByRoute = _.groupBy(
+                        trxs.filter(trx => !trx.adHoc), // Exclude adHoc trips
+                        'routeId'
+                    );
+    
+                    const groupedTrxsByRouteDirection = _.mapValues(groupedTrxsByRoute, (routeData) =>
+                        _.groupBy(routeData, 'obIb')
+                    );
+    
+                    const schedulesGroupedByDay = _.mapValues(groupedTrxsByRouteDirection, (directionData) =>
+                        _.mapValues(directionData, (directionGroup) =>
+                            _.groupBy(directionGroup, 'scheduledAt')
+                        )
+                    );
+    
+                    const groupedData = schedulesGroupedByDay;
+                    if (!groupedData || Object.keys(groupedData).length === 0) {
+                        console.warn('groupedData is empty or invalid.');
+                        return;
+                    }
+
+                    Object.keys(groupedData).forEach(key => {
+                        const routeDirectionData = groupedData[key];
+                        
+                        // Check for loop route scenario
+                        const directions = [0, 1, 2]; // Outbound, Inbound, Loop
+                        const existingDirections = directions.filter(dir => routeDirectionData[dir]);
+                    
+                        let schedule;
+                        try {
+                            schedule = timetable[key];
+                            if (!schedule) {
+                                console.warn(`No schedule found for route ${key}`);
+                                return;
+                            }
+                        } catch(error) {
+                            console.warn(`Error accessing timetable for route ${key}:`, error);
+                            return;
+                        }
+                    
+                        // If no data exists for any direction
+                        if (existingDirections.length === 0) {
+                            console.warn(`No data found for any direction in route ${key}`);
+                            return;
+                        }
+                    
+                        // Process each existing direction
+                        existingDirections.forEach(direction => {
+                            const directionData = routeDirectionData[direction];
+                            const directionSchedules = schedule[direction][scheduleDay];
+
+                            const firstTrxInDirection = Object.values(directionData)[0]?.[0];
+                            if (!firstTrxInDirection) {
+                                console.warn(`No transactions found for direction ${direction}`);
+                                return;
+                            }
+
+                            const routeId = firstTrxInDirection.routeId;
+                            const directionId = direction; // Use the current direction
+                            const routeName = firstTrxInDirection.routeName;
+                            const routeShortName = firstTrxInDirection.routeShortName;
+
+                            // console.log('routeId: ', routeId)
+
+                            // console.log(directionData)
+                    
+                            // Validate direction schedules
+                            if (!directionSchedules || directionSchedules.length === 0) {
+                                console.warn(`No schedules found for direction ${direction} in route ${key}`);
+                                return;
+                            }
+                    
+                            const directionKeys = Object.keys(directionData);
+                            const directionKeysConverted = directionKeys.map(k => ({
+                                original: k,
+                                converted: moment(k).utcOffset(8).format("HH:mm:ss")
+                            }));
+                    
+                            // console.log('directionSchedules: ', directionSchedules);
+
+                            // Find missing schedules
+                            const missingSchedules = directionSchedules.filter(schedule => {
+                                return !directionKeysConverted.some(({ converted }) => converted === schedule.start_time);
+                            });
+
+                            // console.log('Direction Keys (UTC+8):', directionKeysConverted);
+                            // console.log('Schedules (UTC+8):', directionSchedules.map(s => s.start_time));
+                            // console.log('Missing Schedules:', missingSchedules);
+                            
+                            // Process missing schedules
+                            missingSchedules.forEach(sch => {
+
+                                const missingDate = directionKeysConverted.length > 0 
+                                    ? directionKeysConverted[0].original 
+                                    : null;
+                                
+                                const dateInGMT8 = missingDate
+                                    ? moment(missingDate).utcOffset(8).format("YYYY-MM-DD")
+                                    : "N/A";
+                                        
+                                const scheduledTime = `${dateInGMT8} ${sch.start_time}`;
+                                const scheduledEndTime = `${dateInGMT8} ${sch.end_time}`;
+
+                                const trxsSkeleton = {
+                                    "scheduledAt": moment(scheduledTime).toISOString(),
+                                    "scheduledEndTime": moment(scheduledEndTime).toISOString(),
+                                    "startedAt": null,
+                                    "endedAt": null,
+                                    "id": routeId,
+                                    "agencyTripId": null,
+                                    "userId": null,
+                                    "vehicleId": null,
+                                    "vehicleRegistrationNumber": null,
+                                    "routeId": routeId,
+                                    "driverId": null,
+                                    "driverIdentificationNumber": null,
+                                    "obIb": directionId,
+                                    "driverName": "null null",
+                                    "routeShortName": routeShortName,
+                                    "routeName": routeName,
+                                    "journeyId": null,
+                                    "tripId": `M1000${idx}`,
+                                    "paymentType": null,
+                                    "amount": 0,
+                                    "createdAt": "2024-12-24T19:15:31.877Z",
+                                    "journeyCreated": null,
+                                    "journeyEnded": null,
+                                    "noOfAdult": 0,
+                                    "noOfChild": 0,
+                                    "noOfSenior": 0,
+                                    "noOfOku": 0,
+                                    "noOfForeignAdult": 0,
+                                    "noOfForeignChild": 0,
+                                    "adultFare": null,
+                                    "childFare": null,
+                                    "seniorFare": null,
+                                    "okuFare": null,
+                                    "foreignAdultFare": null,
+                                    "foreignChildFare": null,
+                                    "deviceSerialNumber": null,
+                                    "apadPolygon": "_}w_@}fwdRBEipLp_CUGmpi@mmeAo@u@ihBwqBAA",
+                                    "kmOutbound": "74.00",
+                                    "kmInbound": "74.00",
+                                    "kmLoop": null,
+                                    "kmRate": null,
+                                    "VehicleAge": null,
+                                    "trip_mileage": null,
+                                    "localDate":moment(scheduledTime).format('DD-MM-YYYY (ddd)')
+                                };
+
+                                const skeleton = {
+                                    "datetime_": moment(scheduledTime).format('DD-MM-YYYY HH:mm:ss (ddd)'),
+                                    "checkoutTime_": "-",
+                                    "uniqueTrip_": {},
+                                    "totalTripCount_": 0,
+                                    "uniqueDriver_": {},
+                                    "totalUniqueDriverCount_": 0,
+                                    "uniqueVehicle_": {},
+                                    "totalUniqueVehicleCount_": 0,
+                                    "uniqueJourney_": {},
+                                    "totalTransaction_": 0,
+                                    "totalAmount_": "0",
+                                    "noOfAdult": 0,
+                                    "noOfChild": 0,
+                                    "noOfSenior": 0,
+                                    "totalChild": 0,
+                                    "totalSenior": 0,
+                                    "totalAdult": 0,
+                                    "noOfOku": 0,
+                                    "noOfForeignAdult": 0,
+                                    "noOfForeignChild": 0,
+                                    "totalRidership_": 0,
+                                    "cashTotalAmount_": "0",
+                                    "cashTotalRidership_": 0,
+                                    "cashlessTotalAmount_": "0",
+                                    "cashlessTotalRidership_": 0,
+                                    "localTimeGroup_": moment(scheduledTime).format('DD-MM-YYYY (ddd)'),
+                                    "trxs": [trxsSkeleton]
+                                }
+                    
+                                returnData.push(skeleton);
+                                idx += 1;
+                            });
+                        });
+                    });
+                } catch (error) {
+                    console.error('Unexpected error processing tabulated data:', error);
+                }
+            });
+        } else {
+            console.log('normal return data');
+        }
+        // TODO ----- End here
 
         // console.log(returnData[0].trxs)
         //
