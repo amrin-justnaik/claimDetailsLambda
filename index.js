@@ -721,7 +721,11 @@ export const handler = async (event) => {
                                     "trxs": [trxsSkeleton]
                                 }
                     
-                                returnData.push(skeleton);
+                                const transaction = returnData.find(item =>
+                                    item.trxs.some(trx => trx.routeId === routeId)
+                                );
+
+                                transaction.trxs.push(trxsSkeleton);
                                 idx += 1;
                             });
                         });
@@ -738,7 +742,22 @@ export const handler = async (event) => {
         // console.log(returnData[0].trxs)
         //
         returnData.forEach(({ trxs }) => {
-            const uniqueTrips = Object.values(_.groupBy(trxs, "tripId"));
+            const uniqueTrips = Object.values(_.groupBy(trxs, "tripId"))
+                .sort((a, b) => {
+                    // Sort by routeId first
+                    const routeIdA = a[0]?.routeId || 0;
+                    const routeIdB = b[0]?.routeId || 0;
+
+                    if (routeIdA !== routeIdB) {
+                        return routeIdA - routeIdB; // Ascending order of routeId
+                    }
+
+                    // If routeId is the same, sort by scheduledAt
+                    const scheduledAtA = new Date(a[0]?.scheduledAt).getTime();
+                    const scheduledAtB = new Date(b[0]?.scheduledAt).getTime();
+                    return scheduledAtA - scheduledAtB; // Ascending order of scheduledAt
+                });
+                
             uniqueTrips.forEach((sameTripTrxs) => {
 
                 //
