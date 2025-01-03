@@ -874,13 +874,12 @@ export const handler = async (event) => {
                             const scheduledMoment = moment(scheduledTimeStart);
 
                             // Filter tripLogsToScan to only include rows where the timestamp meets the condition
-                            const filteredLogs = tripLogsToScan.filter((record) => {
-                                const recordMoment = moment(parseInt(record.timestamp, 10));
-                                const condition = recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
-
-                                // Check if record timestamp is within the required range 15 minutes before scheduled at and after 
-                                return recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
-                            });
+                            const filteredLogs = tripLogsToScan
+                                .filter((record) => {
+                                    const recordMoment = moment(parseInt(record.timestamp, 10));
+                                    return recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
+                                })
+                                .map((record) => JSON.parse(JSON.stringify(record))); // Break reference
 
                             const startPoint =
                                 routeStops[sameTripTrxs[0].routeId]?.filter(
@@ -914,73 +913,125 @@ export const handler = async (event) => {
                             let highestSequence = 0; // Initialize highestSequence
 
                             if (filteredLogs?.length > 0 && tripLogsToScan?.length > 0) {
-                                filteredLogs[0].sequence = tripLogsToScan[0].sequence
-                                filteredLogs[0].stopId = tripLogsToScan[0].stopId
-                                filteredLogs[0].stopName = tripLogsToScan[0].stopName
+                                const filteredName = filteredLogs[0].stopName;
+                                const filteredStopId = filteredLogs[0].stopName;
+                                const filteredSequence = filteredLogs[0].stopName;
+
+                                filteredLogs[0].sequence =  filteredSequence == "null" || filteredName == null ? tripLogsToScan[0].sequence : filteredSequence;
+                                filteredLogs[0].stopId =  filteredStopId == "null" || filteredName == null ? tripLogsToScan[0].stopId : filteredStopId;
+                                filteredLogs[0].stopName = filteredName == "null" || filteredName == null ? tripLogsToScan[0].stopName : filteredName;
                             }
 
-                            // Analyze the first 200 records in tripLogsToScan
-                            for (let i = 0; i < Math.min(250, filteredLogs?.length); i++) {
-                                const record = filteredLogs[i];
-
-                                if (
-                                    record.sequence &&
-                                    record.sequence > highestSequence &&
-                                    record.sequence != null &&
-                                    record.sequence != "null"
-                                ) {
-                                    highestSequence = record.sequence;
-                                }
-
-                                if (!stopNameConditionSatisfied) {
-                                    // Check the condition only if it hasn't been satisfied yet
-                                    if (record.stopName.trim().toLowerCase() === startPoint.trim().toLowerCase()) {
-                                        stopNameConditionSatisfied = true;
-                                    }
-                                }
-
-                                if (stopNameConditionSatisfied) {
-                                    // Once stopNameConditionSatisfied is true, check speed condition consecutively
-                                    if (parseFloat(record.speed) >= 20) {
-                                        speedGreaterThan20Count++;
-
-                                        if (speedGreaterThan20Count === 5) {
-                                            if (highestSequence == startSequence) {
-                                                // If sequence has been encountered, take the timestamp of the first occurrence in history log
-                                                timestampOfInterest = record.timestamp;
-                                            } else if (highestSequence == startSequence + 1) {
-                                                timestampOfInterest = filteredLogs[i - 4].timestamp;
-                                            } else {
-                                                timestampOfInterest = filteredLogs[0].timestamp;
-                                            }
-                                            break;
-                                        }
-                                    } else {
-                                        // Reset the count if speed drops below 20
-                                        speedGreaterThan20Count = 0;
-                                    }
-                                }
-                            }
-
-                            // If the timestamp is still null, take the time of the 1st occurrence
-                            if (timestampOfInterest === null && filteredLogs.length > 0) {
-                                timestampOfInterest = filteredLogs[0].timestamp;
-
-                                const timestampDate = momentTimezone(+timestampOfInterest, "x").format("DD/MM/YYYY");
-
-                                if (timestampDate != momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")) {
-                                    console.log('time: ', timestampDate);
-                                    console.log('need to search for the right date');
-
-                                    const matchingLog = filteredLogs.find(log =>
-                                        momentTimezone(+log.timestamp, "x").format("DD/MM/YYYY") ===
-                                        momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
+                            // 1. decode virtual checkpoints
+                            // 2. for outbound, use the first checkpoint, use the last checkpoint for inbound
+                            // 3. check in the trip log, when its m location is in the radius of 200m of the checkpoint
+                            // 4. if m exist, find n, where it first go outside the 200m radius
+                            // 5. use n timestamp as actual start time
+                            const decodedApadPolygon = PolylineUtils.decode(sameTripTrxs[0].apadPolygon);
+                            const originCheckpoint = sameTripTrxs[0].obIb == 2 ? decodedApadPolygon[decodedApadPolygon.length - 1] : decodedApadPolygon[0];
+                            
+                            if (originCheckpoint && filteredLogs?.length) {
+                                let pointsWithinRadius = [];
+                                let lastInRadiusRecord = null;
+                                let firstOutOfRadiusRecord = null;
+                            
+                                for (let i = 0; i < filteredLogs?.length; i++) {
+                                    const record = filteredLogs[i];
+                            
+                                    const isNear = geolib.isPointWithinRadius(
+                                        {
+                                            latitude: record.latitude,
+                                            longitude: record.longitude,
+                                        },
+                                        {
+                                            latitude: originCheckpoint[0],
+                                            longitude: originCheckpoint[1]
+                                        },
+                                        200
                                     );
-
-                                    if (matchingLog) {
-                                        timestampOfInterest = matchingLog.timestamp;
-                                        console.log('Found matching date:', momentTimezone(+matchingLog.timestamp, "x").format("DD/MM/YYYY"));
+                            
+                                    if (isNear) {
+                                        pointsWithinRadius.push(record);
+                                        lastInRadiusRecord = record; // Update the last point within radius
+                                    } else if (lastInRadiusRecord) {
+                                        // We've exited the radius and can capture the timestamp
+                                        firstOutOfRadiusRecord = record;
+                                        break; // Exit loop early for efficiency
                                     }
+                                }
+                            
+                                // Capture the timestamp from the first point outside the radius
+                                timestampOfInterest = firstOutOfRadiusRecord?.timestamp;
+                            }
+
+                            if (timestampOfInterest === null || timestampOfInterest === undefined) {
+                                //  Analyze the first 250 records in tripLogsToScan
+                                for (let i = 0; i < Math.min(250, filteredLogs?.length); i++) {
+                                    const record = filteredLogs[i];
+    
+                                    if (
+                                        record.sequence &&
+                                        record.sequence > highestSequence &&
+                                        record.sequence != null &&
+                                        record.sequence != "null"
+                                    ) {
+                                        highestSequence = record.sequence;
+                                    }
+    
+                                    if (!stopNameConditionSatisfied) {
+                                        // Check the condition only if it hasn't been satisfied yet
+                                        if (record.stopName.trim().toLowerCase() === startPoint.trim().toLowerCase()) {
+                                            stopNameConditionSatisfied = true;
+                                        }
+                                    }
+    
+                                    if (stopNameConditionSatisfied) {
+                                        // Once stopNameConditionSatisfied is true, check speed condition consecutively
+                                        if (parseFloat(record.speed) >= 20) {
+                                            speedGreaterThan20Count++;
+    
+                                            if (speedGreaterThan20Count === 5) {
+                                                if (highestSequence == startSequence) {
+                                                    // If sequence has been encountered, take the timestamp of the first occurrence in history log
+                                                    timestampOfInterest = record.timestamp;
+                                                } else if (highestSequence == startSequence + 1) {
+                                                    timestampOfInterest = filteredLogs[i - 4].timestamp;
+                                                } else {
+                                                    timestampOfInterest = filteredLogs[0].timestamp;
+                                                }
+                                                break;
+                                            }
+                                        } else {
+                                            // Reset the count if speed drops below 20
+                                            speedGreaterThan20Count = 0;
+                                        }
+                                    }
+                                }
+                            }
+
+                            if ((timestampOfInterest === null || timestampOfInterest === undefined) && filteredLogs?.length > 0) {
+                                timestampOfInterest = filteredLogs[0]?.timestamp;
+                            
+                                if (timestampOfInterest) {
+                                    const timestampDate = momentTimezone(+timestampOfInterest, "x").format("DD/MM/YYYY");
+                            
+                                    if (
+                                        sameTripTrxs?.[0]?.startedAt &&
+                                        timestampDate !== momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
+                                    ) {
+                                        const matchingLog = filteredLogs.find(log =>
+                                            momentTimezone(+log.timestamp, "x").format("DD/MM/YYYY") ===
+                                            momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
+                                        );
+                            
+                                        if (matchingLog) {
+                                            timestampOfInterest = matchingLog.timestamp;
+                                        } else {
+                                            console.warn('No matching log found for the specified date.');
+                                        }
+                                    }
+                                } else {
+                                    console.warn('Timestamp of the first log is undefined.');
                                 }
                             }
 
@@ -1036,6 +1087,7 @@ export const handler = async (event) => {
 
                             totalByTrip.punctuality = "NOT PUNCTUAL";
                         }
+
                         totalByTrip.startPoint =
                             routeStops[sameTripTrxs[0].routeId]?.filter(
                                 ({ directionId }) => directionId == sameTripTrxs[0].obIb
@@ -1522,126 +1574,201 @@ export const handler = async (event) => {
 
                                 if (tripLog[sameTripTrxs[0].tripId]) {
                                     const tripLogsToScan = tripLog[sameTripTrxs[0].tripId];
-
+        
                                     const scheduledTimeStart = sameTripTrxs[0].scheduledAt;
                                     const scheduledMoment = moment(scheduledTimeStart);
-
+    
                                     // Filter tripLogsToScan to only include rows where the timestamp meets the condition
-                                    const filteredLogs = tripLogsToScan.filter((record) => {
-                                        const recordMoment = moment(parseInt(record.timestamp, 10));
-                                        const condition = recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
-
-                                        // Check if record timestamp is within the required range 15 minutes before scheduled at and after 
-                                        return recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
-                                    });
-
+                                    const filteredLogs = tripLogsToScan
+                                        .filter((record) => {
+                                            const recordMoment = moment(parseInt(record.timestamp, 10));
+                                            return recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
+                                        })
+                                        .map((record) => JSON.parse(JSON.stringify(record))); // Break reference
+    
                                     const startPoint =
                                         routeStops[sameTripTrxs[0].routeId]?.filter(
                                             ({ directionId }) => directionId == sameTripTrxs[0].obIb
                                         )?.length > 0
                                             ? routeStops[sameTripTrxs[0].routeId]
                                                 ?.filter(
-                                                    ({ directionId }) =>
-                                                        directionId == sameTripTrxs[0].obIb
+                                                    ({ directionId }) => directionId == sameTripTrxs[0].obIb
                                                 )
                                                 ?.reduce(function (res, obj) {
                                                     return obj.sequence < res.sequence ? obj : res;
                                                 })?.name
                                             : "";
-
+        
                                     const startSequence =
                                         routeStops[sameTripTrxs[0].routeId]?.filter(
                                             ({ directionId }) => directionId == sameTripTrxs[0].obIb
                                         )?.length > 0
                                             ? routeStops[sameTripTrxs[0].routeId]
                                                 ?.filter(
-                                                    ({ directionId }) =>
-                                                        directionId == sameTripTrxs[0].obIb
+                                                    ({ directionId }) => directionId == sameTripTrxs[0].obIb
                                                 )
                                                 ?.reduce(function (res, obj) {
                                                     return obj.sequence < res.sequence ? obj : res;
                                                 })?.sequence
                                             : "";
-
+        
                                     let timestampOfInterest = null;
                                     let speedGreaterThan20Count = 0;
                                     let stopNameConditionSatisfied = false;
                                     let highestSequence = 0; // Initialize highestSequence
-
+        
                                     if (filteredLogs?.length > 0 && tripLogsToScan?.length > 0) {
-                                        filteredLogs[0].sequence = tripLogsToScan[0].sequence
-                                        filteredLogs[0].stopId = tripLogsToScan[0].stopId
-                                        filteredLogs[0].stopName = tripLogsToScan[0].stopName
+                                        const filteredName = filteredLogs[0].stopName;
+                                        const filteredStopId = filteredLogs[0].stopName;
+                                        const filteredSequence = filteredLogs[0].stopName;
+    
+                                        filteredLogs[0].sequence =  filteredSequence == "null" || filteredName == null ? tripLogsToScan[0].sequence : filteredSequence;
+                                        filteredLogs[0].stopId =  filteredStopId == "null" || filteredName == null ? tripLogsToScan[0].stopId : filteredStopId;
+                                        filteredLogs[0].stopName = filteredName == "null" || filteredName == null ? tripLogsToScan[0].stopName : filteredName;
                                     }
-
-                                    for (let i = 0; i < Math.min(200, filteredLogs?.length); i++) {
-                                        const record = filteredLogs[i];
-
-                                        if (
-                                            record.sequence &&
-                                            record.sequence > highestSequence &&
-                                            record.sequence != null &&
-                                            record.sequence != "null"
-                                        ) {
-                                            highestSequence = record.sequence;
-                                        }
-
-                                        if (!stopNameConditionSatisfied) {
-                                            if (record.stopName === startPoint) {
-                                                stopNameConditionSatisfied = true;
+    
+                                    // 1. decode virtual checkpoints
+                                    // 2. for outbound, use the first checkpoint, use the last checkpoint for inbound
+                                    // 3. check in the trip log, when its m location is in the radius of 200m of the checkpoint
+                                    // 4. if m exist, find n, where it first go outside the 200m radius
+                                    // 5. use n timestamp as actual start time
+                                    const decodedApadPolygon = PolylineUtils.decode(sameTripTrxs[0].apadPolygon);
+                                    const originCheckpoint = sameTripTrxs[0].obIb == 2 ? decodedApadPolygon[decodedApadPolygon.length - 1] : decodedApadPolygon[0];
+                                    
+                                    if (originCheckpoint && filteredLogs?.length) {
+                                        let pointsWithinRadius = [];
+                                        let lastInRadiusRecord = null;
+                                        let firstOutOfRadiusRecord = null;
+                                    
+                                        for (let i = 0; i < filteredLogs?.length; i++) {
+                                            const record = filteredLogs[i];
+                                    
+                                            const isNear = geolib.isPointWithinRadius(
+                                                {
+                                                    latitude: record.latitude,
+                                                    longitude: record.longitude,
+                                                },
+                                                {
+                                                    latitude: originCheckpoint[0],
+                                                    longitude: originCheckpoint[1]
+                                                },
+                                                200
+                                            );
+                                    
+                                            if (isNear) {
+                                                pointsWithinRadius.push(record);
+                                                lastInRadiusRecord = record; // Update the last point within radius
+                                            } else if (lastInRadiusRecord) {
+                                                // We've exited the radius and can capture the timestamp
+                                                firstOutOfRadiusRecord = record;
+                                                break; // Exit loop early for efficiency
                                             }
                                         }
-
-                                        if (stopNameConditionSatisfied) {
-                                            if (parseFloat(record.speed) >= 20) {
-                                                speedGreaterThan20Count++;
-
-                                                if (speedGreaterThan20Count === 5) {
-                                                    if (highestSequence == startSequence) {
-                                                        timestampOfInterest = record.timestamp;
-                                                    } else if (highestSequence == startSequence + 1) {
-                                                        timestampOfInterest =
-                                                            filteredLogs[i - 4].timestamp;
-                                                    } else {
-                                                        timestampOfInterest = filteredLogs[0].timestamp;
-                                                    }
-                                                    break;
+                                    
+                                        // Capture the timestamp from the first point outside the radius
+                                        timestampOfInterest = firstOutOfRadiusRecord?.timestamp;
+                                    }
+    
+                                    if (timestampOfInterest === null || timestampOfInterest === undefined) {
+                                        //  Analyze the first 250 records in tripLogsToScan
+                                        for (let i = 0; i < Math.min(250, filteredLogs?.length); i++) {
+                                            const record = filteredLogs[i];
+            
+                                            if (
+                                                record.sequence &&
+                                                record.sequence > highestSequence &&
+                                                record.sequence != null &&
+                                                record.sequence != "null"
+                                            ) {
+                                                highestSequence = record.sequence;
+                                            }
+            
+                                            if (!stopNameConditionSatisfied) {
+                                                // Check the condition only if it hasn't been satisfied yet
+                                                if (record.stopName.trim().toLowerCase() === startPoint.trim().toLowerCase()) {
+                                                    stopNameConditionSatisfied = true;
                                                 }
-                                            } else {
-                                                speedGreaterThan20Count = 0;
+                                            }
+            
+                                            if (stopNameConditionSatisfied) {
+                                                // Once stopNameConditionSatisfied is true, check speed condition consecutively
+                                                if (parseFloat(record.speed) >= 20) {
+                                                    speedGreaterThan20Count++;
+            
+                                                    if (speedGreaterThan20Count === 5) {
+                                                        if (highestSequence == startSequence) {
+                                                            // If sequence has been encountered, take the timestamp of the first occurrence in history log
+                                                            timestampOfInterest = record.timestamp;
+                                                        } else if (highestSequence == startSequence + 1) {
+                                                            timestampOfInterest = filteredLogs[i - 4].timestamp;
+                                                        } else {
+                                                            timestampOfInterest = filteredLogs[0].timestamp;
+                                                        }
+                                                        break;
+                                                    }
+                                                } else {
+                                                    // Reset the count if speed drops below 20
+                                                    speedGreaterThan20Count = 0;
+                                                }
                                             }
                                         }
                                     }
-
-                                    if (timestampOfInterest === null && filteredLogs.length > 0) {
-                                        timestampOfInterest = filteredLogs[0].timestamp;
+        
+                                    if ((timestampOfInterest === null || timestampOfInterest === undefined) && filteredLogs?.length > 0) {
+                                        timestampOfInterest = filteredLogs[0]?.timestamp;
+                                    
+                                        if (timestampOfInterest) {
+                                            const timestampDate = momentTimezone(+timestampOfInterest, "x").format("DD/MM/YYYY");
+                                    
+                                            if (
+                                                sameTripTrxs?.[0]?.startedAt &&
+                                                timestampDate !== momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
+                                            ) {
+                                                const matchingLog = filteredLogs.find(log =>
+                                                    momentTimezone(+log.timestamp, "x").format("DD/MM/YYYY") ===
+                                                    momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
+                                                );
+                                    
+                                                if (matchingLog) {
+                                                    timestampOfInterest = matchingLog.timestamp;
+                                                } else {
+                                                    console.warn('No matching log found for the specified date.');
+                                                }
+                                            }
+                                        } else {
+                                            console.warn('Timestamp of the first log is undefined.');
+                                        }
                                     }
-
+        
                                     totalByTrip.actualStart = momentTimezone(
                                         +timestampOfInterest,
                                         "x"
                                     ).format("HH:mm");
-
+        
                                     totalByTrip.actualStartWithSeconds = momentTimezone(
                                         +timestampOfInterest,
                                         "x"
                                     ).format("HH:mm:ss");
-
+        
                                     totalByTrip.actualEndWithSeconds = momentTimezone(
                                         sameTripTrxs[0].endedAt
                                     ).isValid()
                                         ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
                                         : "";
-
-                                    const scheduledTimeP = momentTimezone(sameTripTrxs[0].scheduledAt);
-                                    const actualStartTimeP = momentTimezone(+timestampOfInterest, "x");
-
+        
+                                    const scheduledTimeP = momentTimezone(
+                                        sameTripTrxs[0].scheduledAt
+                                    );
+                                    const actualStartTimeP = momentTimezone(
+                                        +timestampOfInterest,
+                                        "x"
+                                    );
+        
                                     const isPunctual =
                                         actualStartTimeP?.isBetween(
                                             scheduledTimeP.clone().subtract(10, "minutes"),
                                             scheduledTimeP.clone().add(5, "minutes")
                                         ) || actualStartTimeP.isSame(scheduledTimeP, "minute");
-
                                     totalByTrip.punctuality =
                                         sameTripTrxs[0].scheduledAt &&
                                             sameTripTrxs[0].startedAt &&
@@ -1662,8 +1789,7 @@ export const handler = async (event) => {
                                         totalByTrip.actualStartWithSeconds = '-';
                                         totalByTrip.actualEndWithSeconds = '-';
                                     }
-
-                                    if (sameTripTrxs[0].adhoc) totalByTrip.remark = 'Ad-hoc';
+        
                                     totalByTrip.punctuality = "NOT PUNCTUAL";
                                 }
 
