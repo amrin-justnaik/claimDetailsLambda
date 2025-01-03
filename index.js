@@ -927,8 +927,14 @@ export const handler = async (event) => {
                             // 3. check in the trip log, when its m location is in the radius of 200m of the checkpoint
                             // 4. if m exist, find n, where it first go outside the 200m radius
                             // 5. use n timestamp as actual start time
-                            const decodedApadPolygon = PolylineUtils.decode(sameTripTrxs[0].apadPolygon);
-                            const originCheckpoint = sameTripTrxs[0].obIb == 2 ? decodedApadPolygon[decodedApadPolygon.length - 1] : decodedApadPolygon[0];
+                            const decodedApadPolygon = sameTripTrxs[0]?.apadPolygon
+                                ? PolylineUtils.decode(sameTripTrxs[0]?.apadPolygon) || []
+                                : [];
+
+                            const originCheckpoint =
+                                decodedApadPolygon.length > 0 && sameTripTrxs[0]?.obIb == 2
+                                    ? decodedApadPolygon[decodedApadPolygon.length - 1]
+                                    : decodedApadPolygon[0];
                             
                             if (originCheckpoint && filteredLogs?.length) {
                                 let pointsWithinRadius = [];
@@ -1632,8 +1638,14 @@ export const handler = async (event) => {
                                     // 3. check in the trip log, when its m location is in the radius of 200m of the checkpoint
                                     // 4. if m exist, find n, where it first go outside the 200m radius
                                     // 5. use n timestamp as actual start time
-                                    const decodedApadPolygon = PolylineUtils.decode(sameTripTrxs[0].apadPolygon);
-                                    const originCheckpoint = sameTripTrxs[0].obIb == 2 ? decodedApadPolygon[decodedApadPolygon.length - 1] : decodedApadPolygon[0];
+                                    const decodedApadPolygon = sameTripTrxs[0]?.apadPolygon
+                                        ? PolylineUtils.decode(sameTripTrxs[0]?.apadPolygon) || []
+                                        : [];
+
+                                    const originCheckpoint =
+                                        decodedApadPolygon.length > 0 && sameTripTrxs[0]?.obIb == 2
+                                            ? decodedApadPolygon[decodedApadPolygon.length - 1]
+                                            : decodedApadPolygon[0];
                                     
                                     if (originCheckpoint && filteredLogs?.length) {
                                         let pointsWithinRadius = [];
