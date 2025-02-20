@@ -950,20 +950,21 @@ export const handler = async (event) => {
                                 ? PolylineUtils.decode(sameTripTrxs[0]?.apadPolygon) || []
                                 : [];
 
-                            const originCheckpoint =
-                                decodedApadPolygon.length > 0 && sameTripTrxs[0]?.obIb == 2
-                                    ? decodedApadPolygon[decodedApadPolygon.length - 1]
-                                    : decodedApadPolygon[0];
-                            
+                            const checkpoints = decodedApadPolygon.length > 0 && sameTripTrxs[0]?.obIb == 2
+                                ? decodedApadPolygon.reverse()
+                                : decodedApadPolygon;
+
+                            const originCheckpoint = checkpoints[0];
+
                             if (originCheckpoint && filteredLogs?.length) {
-                                let pointsWithinRadius = [];
-                                let lastInRadiusRecord = null;
-                                let firstOutOfRadiusRecord = null;
+                                let pointsExitingFirstRadius = [];
+                                let pointStartInFirstCheckpoint = false;
+                                let reachedOtherCheckpoints = false;
                             
                                 for (let i = 0; i < filteredLogs?.length; i++) {
                                     const record = filteredLogs[i];
                             
-                                    const isNear = geolib.isPointWithinRadius(
+                                    const isWithinFirstCheckpoint = geolib.isPointWithinRadius(
                                         {
                                             latitude: record.latitude,
                                             longitude: record.longitude,
@@ -975,18 +976,36 @@ export const handler = async (event) => {
                                         200
                                     );
                             
-                                    if (isNear) {
-                                        pointsWithinRadius.push(record);
-                                        lastInRadiusRecord = record; // Update the last point within radius
-                                    } else if (lastInRadiusRecord) {
-                                        // We've exited the radius and can capture the timestamp
-                                        firstOutOfRadiusRecord = record;
-                                        break; // Exit loop early for efficiency
+                                    if (isWithinFirstCheckpoint) {
+                                        pointsExitingFirstRadius = []; 
+                                        pointStartInFirstCheckpoint = true;
+                                    } else if (pointStartInFirstCheckpoint) {
+                                        pointsExitingFirstRadius.push(record);
                                     }
+
+                                    // skip the 1st checkpoint
+                                    checkpoints.slice(1).forEach((c) => {
+                                        const isWithinRadiusRestCheckpoints = geolib.isPointWithinRadius(
+                                            {
+                                                latitude: record.latitude,
+                                                longitude: record.longitude,
+                                            },
+                                            {
+                                                latitude: c[0],
+                                                longitude: c[1]
+                                            },
+                                            200
+                                        );
+
+                                        if (isWithinRadiusRestCheckpoints) 
+                                            reachedOtherCheckpoints = true;
+                                    });
+
+                                    if (reachedOtherCheckpoints) break;
                                 }
                             
                                 // Capture the timestamp from the first point outside the radius
-                                timestampOfInterest = firstOutOfRadiusRecord?.timestamp;
+                                timestampOfInterest = pointsExitingFirstRadius[0]?.timestamp;
                             }
 
                             if (timestampOfInterest === null || timestampOfInterest === undefined) {
@@ -1661,20 +1680,21 @@ export const handler = async (event) => {
                                         ? PolylineUtils.decode(sameTripTrxs[0]?.apadPolygon) || []
                                         : [];
 
-                                    const originCheckpoint =
-                                        decodedApadPolygon.length > 0 && sameTripTrxs[0]?.obIb == 2
-                                            ? decodedApadPolygon[decodedApadPolygon.length - 1]
-                                            : decodedApadPolygon[0];
-                                    
+                                    const checkpoints = decodedApadPolygon.length > 0 && sameTripTrxs[0]?.obIb == 2
+                                        ? decodedApadPolygon.reverse()
+                                        : decodedApadPolygon;
+
+                                    const originCheckpoint = checkpoints[0];
+
                                     if (originCheckpoint && filteredLogs?.length) {
-                                        let pointsWithinRadius = [];
-                                        let lastInRadiusRecord = null;
-                                        let firstOutOfRadiusRecord = null;
+                                        let pointsExitingFirstRadius = [];
+                                        let pointStartInFirstCheckpoint = false;
+                                        let reachedOtherCheckpoints = false;
                                     
                                         for (let i = 0; i < filteredLogs?.length; i++) {
                                             const record = filteredLogs[i];
                                     
-                                            const isNear = geolib.isPointWithinRadius(
+                                            const isWithinFirstCheckpoint = geolib.isPointWithinRadius(
                                                 {
                                                     latitude: record.latitude,
                                                     longitude: record.longitude,
@@ -1686,19 +1706,38 @@ export const handler = async (event) => {
                                                 200
                                             );
                                     
-                                            if (isNear) {
-                                                pointsWithinRadius.push(record);
-                                                lastInRadiusRecord = record; // Update the last point within radius
-                                            } else if (lastInRadiusRecord) {
-                                                // We've exited the radius and can capture the timestamp
-                                                firstOutOfRadiusRecord = record;
-                                                break; // Exit loop early for efficiency
+                                            if (isWithinFirstCheckpoint) {
+                                                pointsExitingFirstRadius = []; 
+                                                pointStartInFirstCheckpoint = true;
+                                            } else if (pointStartInFirstCheckpoint) {
+                                                pointsExitingFirstRadius.push(record);
                                             }
+
+                                            // skip the 1st checkpoint
+                                            checkpoints.slice(1).forEach((c) => {
+                                                const isWithinRadiusRestCheckpoints = geolib.isPointWithinRadius(
+                                                    {
+                                                        latitude: record.latitude,
+                                                        longitude: record.longitude,
+                                                    },
+                                                    {
+                                                        latitude: c[0],
+                                                        longitude: c[1]
+                                                    },
+                                                    200
+                                                );
+
+                                                if (isWithinRadiusRestCheckpoints) 
+                                                    reachedOtherCheckpoints = true;
+                                            });
+
+                                            if (reachedOtherCheckpoints) break;
                                         }
                                     
                                         // Capture the timestamp from the first point outside the radius
-                                        timestampOfInterest = firstOutOfRadiusRecord?.timestamp;
+                                        timestampOfInterest = pointsExitingFirstRadius[0]?.timestamp;
                                     }
+    Z
     
                                     if (timestampOfInterest === null || timestampOfInterest === undefined) {
                                         //  Analyze the first 250 records in tripLogsToScan
