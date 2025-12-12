@@ -68,7 +68,7 @@ export const handler = async (event) => {
 
         const claimdata2 = await Trip.getAgencyClaimDetailsReportByDate(
             agencyId,
-            timestamp,
+            route,
             { from, to }
         );
 
@@ -335,10 +335,10 @@ export const handler = async (event) => {
                     if (!returnVal) return false;
                 }
 
-                if (route) {
-                    returnVal = routeShortName === route;
-                    if (!returnVal) return false;
-                }
+                // if (route) {
+                //     returnVal = routeShortName === route;
+                //     if (!returnVal) return false;
+                // }
 
                 if (vehicle) {
                     returnVal = vehicleRegistrationNumber === vehicle;

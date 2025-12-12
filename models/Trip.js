@@ -98,7 +98,7 @@ class Trip {
         this.trip_mileage = row.trip_mileage
     }
 
-    static async getAgencyClaimDetailsReportByDate(agencyId, timestamp, options, runner = Sql) {
+    static async getAgencyClaimDetailsReportByDate(agencyId, routeIds, options, runner = Sql) {
         // only get data between past 1 months until yesterday
         // contact super admin if want to get all of their transactions
 
@@ -175,14 +175,23 @@ class Trip {
                     AND t.is_apad_active = TRUE
         `;
 
-        const queries = [agencyId]
+        const queries = [agencyId];
+        let paramIndex = 2;
+
         if (from && to) {
             sqlQuery += "AND (((t.scheduled_at BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8')) AND (t.scheduled_end_time BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8'))) OR (t.started_at BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8')))"
-            queries.push(...[new Date(from) / 1000, new Date(to) / 1000])
+            queries.push(...[new Date(from) / 1000, new Date(to) / 1000]);
+
+            paramIndex += 2;
         } else {
             sqlQuery += "AND (((DATE(TIMEZONE('UTC+8', t.scheduled_at)) >= date_trunc('month', now()) - interval '2 month') AND (DATE(TIMEZONE('UTC+8', t.scheduled_end_time))  >= date_trunc('month', now()) - interval '2 month')) OR (DATE(TIMEZONE('UTC+8', t.started_at))  >= date_trunc('month', now()) - interval '2 month'))"
             // queries.push(new Date(timestamp) / 1000)
             //DATE(TIMEZONE('UTC+8', t.scheduled_at))
+        }
+
+        if (Array.isArray(routeIds) && routeIds.length > 0) {
+            sqlQuery += `AND r.id = ANY($${paramIndex})`;
+            queries.push(routeIds);
         }
 
         sqlQuery += `
@@ -263,6 +272,10 @@ class Trip {
             sqlQuery += "AND (((t.scheduled_at BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8')) AND (t.scheduled_end_time BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8'))) OR (t.started_at BETWEEN (to_timestamp($2) AT TIME ZONE 'UTC+8') AND (to_timestamp($3) AT TIME ZONE 'UTC+8')))"
         } else {
             sqlQuery += "AND (((DATE(TIMEZONE('UTC+8', t.scheduled_at)) >= date_trunc('month', now()) - interval '2 month') AND (DATE(TIMEZONE('UTC+8', t.scheduled_end_time))  >= date_trunc('month', now()) - interval '2 month')) OR (DATE(TIMEZONE('UTC+8', t.started_at))  >= date_trunc('month', now()) - interval '2 month'))"
+        }
+
+        if (Array.isArray(routeIds) && routeIds.length > 0) {
+            sqlQuery += `AND r.id = ANY($${paramIndex})`;
         }
 
         sqlQuery += `) AS all_null_journeys;`;
