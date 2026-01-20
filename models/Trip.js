@@ -54,7 +54,7 @@ class TripClaimHistory {
         this.VehicleAge = row.vehicle_age;
         this.staffId = row.staff_id;
         this.trip_mileage = row.trip_mileage;
-        this.r.isSbst = row.r.is_sbst;
+        this.isSbst = row.r.is_sbst;
     }
 }
 

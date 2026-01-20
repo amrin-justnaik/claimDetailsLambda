@@ -78,7 +78,7 @@ export const handler = async (event) => {
     let tripLog = {};
     const tripGeoCache = new Map();
     let routeStops = {};
-    
+
     const getTripGeoCache = (row) => {
         const cacheKey = `${row.tripId}|${row.routeId}|${row.obIb}|${row.apadPolygon || ""}`;
         const cached = tripGeoCache.get(cacheKey);
@@ -1073,6 +1073,7 @@ export const handler = async (event) => {
                                 : decodedApadPolygon;
 
                             const originCheckpoint = checkpoints[0];
+                            const isRouteSbst = sameTripTrxs[0]?.isSbst || false;
 
                             if (originCheckpoint && filteredLogs?.length) {
                                 let pointsExitingFirstRadius = [];
@@ -1091,7 +1092,7 @@ export const handler = async (event) => {
                                             latitude: originCheckpoint[0],
                                             longitude: originCheckpoint[1]
                                         },
-                                        200
+                                        isRouteSbst ? 100 : 200
                                     );
                             
                                     if (isWithinFirstCheckpoint) {
@@ -1224,7 +1225,7 @@ export const handler = async (event) => {
                             const isPunctual =
                                 actualStartTimeP?.isBetween(
                                     scheduledTimeP.clone().subtract(10, "minutes"),
-                                    scheduledTimeP.clone().add(5, "minutes")
+                                    scheduledTimeP.clone().add(6, "minutes")
                                 ) || actualStartTimeP.isSame(scheduledTimeP, "minute");
                             totalByTrip.punctuality =
                                 sameTripTrxs[0].scheduledAt &&
@@ -1704,6 +1705,7 @@ export const handler = async (event) => {
                                         : decodedApadPolygon;
 
                                     const originCheckpoint = checkpoints[0];
+                                    const isRouteSbst = sameTripTrxs[0]?.isSbst || false;
 
                                     if (originCheckpoint && filteredLogs?.length) {
                                         let pointsExitingFirstRadius = [];
@@ -1722,7 +1724,7 @@ export const handler = async (event) => {
                                                     latitude: originCheckpoint[0],
                                                     longitude: originCheckpoint[1]
                                                 },
-                                                200
+                                                isRouteSbst ? 100 : 200
                                             );
                                     
                                             if (isWithinFirstCheckpoint) {
@@ -1856,7 +1858,7 @@ export const handler = async (event) => {
                                     const isPunctual =
                                         actualStartTimeP?.isBetween(
                                             scheduledTimeP.clone().subtract(10, "minutes"),
-                                            scheduledTimeP.clone().add(5, "minutes")
+                                            scheduledTimeP.clone().add(6, "minutes")
                                         ) || actualStartTimeP.isSame(scheduledTimeP, "minute");
                                     totalByTrip.punctuality =
                                         sameTripTrxs[0].scheduledAt &&

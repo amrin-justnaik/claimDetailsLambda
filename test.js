@@ -4,8 +4,18 @@ import momentTimezone from 'moment-timezone';
 momentTimezone.tz.setDefault("Asia/Singapore");
 
 const event = {
-    "timestamp": "2024-09-06T03:56:50.279Z",
-    "to": "2024-12-18 23:59:59", "amPm": "All", "from": "2024-12-18 00:00:00", "route": null, "driver": null, "paidBy": "All", "vehicle": null, "agencyId": 40, "selectToDate": "2024-12-18 23:59:59", "selectFromDate": "2024-12-18 00:00:00", "weekendWeekday": "All",
+    "to": "2025-12-31 23:59:59",
+    "amPm": "All",
+    "from": "2025-12-15 00:00:00",
+    "route": null,
+    "driver": null,
+    "paidBy": "All",
+    "vehicle": null,
+    "agencyId": 10,
+    "selectFromDate": "2025-12-31 00:00:00",
+    "selectToDate": "2025-12-31 23:59:59",
+    "weekendWeekday": "All",
+    "timestamp": 1767325761
 }
 
 console.time("claim");
