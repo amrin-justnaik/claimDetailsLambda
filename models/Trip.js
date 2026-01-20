@@ -45,16 +45,16 @@ class TripClaimHistory {
         this.foreignAdultFare = row.f_adult_fare;
         this.foreignChildFare = row.f_child_fare;
         this.deviceSerialNumber = row.serial_number;
-        this.apadPolygon = row.apad_polygon,
-            this.kmOutbound = row.km_outbound,
-            this.kmInbound = row.km_inbound,
-            this.kmLoop = row.km_loop,
-            this.kmRate = row.km_charge
-        this.firstStop = row.first_stop
-        this.VehicleAge = row.vehicle_age
-        this.staffId = row.staff_id
-        this.trip_mileage = row.trip_mileage
-
+        this.apadPolygon = row.apad_polygon;
+        this.kmOutbound = row.km_outbound;
+        this.kmInbound = row.km_inbound;
+        this.kmLoop = row.km_loop;
+        this.kmRate = row.km_charge;
+        this.firstStop = row.first_stop;
+        this.VehicleAge = row.vehicle_age;
+        this.staffId = row.staff_id;
+        this.trip_mileage = row.trip_mileage;
+        this.r.isSbst = row.r.is_sbst;
     }
 }
 
@@ -111,6 +111,7 @@ class Trip {
                     r.id,
                     r.short_name,
                     r.name AS route_name,
+                    r.is_sbst,
                     t.direction_id,
                     t.id AS trip_id,
                     t.started_at,
@@ -203,6 +204,7 @@ class Trip {
                     r.id,
                     r.short_name,
                     r.name AS route_name,
+                    r.is_sbst,
                     t.direction_id,
                     t.id AS trip_id,
                     t.started_at,

@@ -11,6 +11,41 @@ momentTimezone.tz.setDefault("Asia/Singapore");
 
 import zlib from 'zlib';
 
+const getTripLogDefaults = () => {
+    const memMb = Number(process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE || 0);
+    if (memMb >= 8192) return { concurrency: 40, batchSize: 400 };
+    if (memMb >= 4096) return { concurrency: 30, batchSize: 300 };
+    if (memMb >= 2048) return { concurrency: 20, batchSize: 200 };
+    if (memMb >= 1024) return { concurrency: 12, batchSize: 120 };
+    return { concurrency: 8, batchSize: 80 };
+};
+
+const { concurrency: DEFAULT_TRIP_LOG_CONCURRENCY, batchSize: DEFAULT_TRIP_LOG_BATCH_SIZE } =
+    getTripLogDefaults();
+const TRIP_LOG_CONCURRENCY = Number(process.env.TRIP_LOG_CONCURRENCY || DEFAULT_TRIP_LOG_CONCURRENCY);
+const TRIP_LOG_BATCH_SIZE = Number(process.env.TRIP_LOG_BATCH_SIZE || DEFAULT_TRIP_LOG_BATCH_SIZE);
+
+const mapWithConcurrency = async (items, limit, mapper) => {
+    const results = new Array(items.length);
+    let index = 0;
+    const workers = new Array(Math.min(limit, items.length)).fill(null).map(async () => {
+        while (index < items.length) {
+            const currentIndex = index++;
+            results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+        }
+    });
+    await Promise.all(workers);
+    return results;
+};
+
+const chunkArray = (arr, size) => {
+    const chunks = [];
+    for (let i = 0; i < arr.length; i += size) {
+        chunks.push(arr.slice(i, i + size));
+    }
+    return chunks;
+};
+
 export const handler = async (event) => {
     // console.log("JSON.parse(JSON.stringify(event.payload))",JSON.parse(JSON.stringify(event.payload)));
     //   console.log("event",event);
@@ -41,7 +76,92 @@ export const handler = async (event) => {
     );
 
     let tripLog = {};
+    const tripGeoCache = new Map();
     let routeStops = {};
+    
+    const getTripGeoCache = (row) => {
+        const cacheKey = `${row.tripId}|${row.routeId}|${row.obIb}|${row.apadPolygon || ""}`;
+        const cached = tripGeoCache.get(cacheKey);
+        if (cached) return cached;
+
+        const logPoints = tripLog[row.tripId] || [];
+        const result = {
+            apadStartHits: 0,
+            apadBetweenHits: 0,
+            stopSequenceHits: new Set(),
+        };
+
+        if (logPoints.length > 0) {
+            if (row?.apadPolygon?.length > 0) {
+                const decodedPolyline = PolylineUtils.decode(row.apadPolygon);
+                if (decodedPolyline.length > 0) {
+                    const startIndices = [0, 5];
+                    for (const idx of startIndices) {
+                        if (idx >= decodedPolyline.length) continue;
+                        const poly = decodedPolyline[idx];
+                        const radius = idx === 0 ? 100 : 200;
+                        for (let i = 0; i < logPoints.length; i++) {
+                            const isNear = geolib.isPointWithinRadius(
+                                { latitude: poly[0], longitude: poly[1] },
+                                {
+                                    latitude: logPoints[i].latitude,
+                                    longitude: logPoints[i].longitude,
+                                },
+                                radius
+                            );
+                            if (isNear) {
+                                result.apadStartHits += 1;
+                                break;
+                            }
+                        }
+                    }
+                    for (let idx = 1; idx < decodedPolyline.length - 1; idx++) {
+                        const poly = decodedPolyline[idx];
+                        for (let i = 0; i < logPoints.length; i++) {
+                            const isNear = geolib.isPointWithinRadius(
+                                { latitude: poly[0], longitude: poly[1] },
+                                {
+                                    latitude: logPoints[i].latitude,
+                                    longitude: logPoints[i].longitude,
+                                },
+                                200
+                            );
+                            if (isNear) {
+                                result.apadBetweenHits += 1;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            const stopsForDirection = routeStops[row.routeId]?.filter(
+                ({ directionId }) => directionId == row.obIb
+            ) || [];
+            if (stopsForDirection.length > 0) {
+                for (let s = 0; s < stopsForDirection.length; s++) {
+                    const stop = stopsForDirection[s];
+                    for (let i = 0; i < logPoints.length; i++) {
+                        const isNear = geolib.isPointWithinRadius(
+                            { latitude: stop.latitude, longitude: stop.longitude },
+                            {
+                                latitude: logPoints[i].latitude,
+                                longitude: logPoints[i].longitude,
+                            },
+                            200
+                        );
+                        if (isNear) {
+                            result.stopSequenceHits.add(stop.sequence);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        tripGeoCache.set(cacheKey, result);
+        return result;
+    };
 
     if (!timestamp)
         return {
@@ -247,24 +367,22 @@ export const handler = async (event) => {
                     };
                 }
 
-                const tripFetch = uniqueTripIds.map((tripId) =>
-                    getTripLogForBulk(tripId)
-                );
-                const results = await Promise.all(
-                    tripFetch.map((p) => p.catch((e) => e))
-                );
-
-                const tripResolve = results.filter(
-                    (result) => result.length > 0 && !(result instanceof Error)
-                );
-                tripResolve.forEach((data) => {
-                    if (data.length > 0) {
-                        tripLog = {
-                            ...tripLog,
-                            [data[0]?.tripId]: data,
-                        };
+                const tripLogBatches = chunkArray(uniqueTripIds, TRIP_LOG_BATCH_SIZE);
+                for (const batch of tripLogBatches) {
+                    const results = await mapWithConcurrency(
+                        batch,
+                        TRIP_LOG_CONCURRENCY,
+                        async (tripId) => ({ tripId, log: await getTripLogForBulk(tripId) })
+                    );
+                    for (const { tripId, log } of results) {
+                        if (Array.isArray(log) && log.length > 0) {
+                            tripLog = {
+                                ...tripLog,
+                                [tripId]: log,
+                            };
+                        }
                     }
-                });
+                }
             } catch (error) {
                 console.error("Error in fetching trip logs:", error);
                 return {
@@ -1213,45 +1331,8 @@ export const handler = async (event) => {
                                 ({ directionId }) => directionId == sameTripTrxs[0].obIb
                             )?.length > 0
                         ) {
-                            const decodedPolyline = routeStops[
-                                sameTripTrxs[0].routeId
-                            ]?.filter(
-                                ({ directionId }) => directionId == sameTripTrxs[0].obIb
-                            );
-                            const arrIb = [];
-                            if (
-                                decodedPolyline.length > 0 &&
-                                tripLog[sameTripTrxs[0].tripId]?.length > 0
-                            ) {
-                                decodedPolyline?.forEach((poly, index) => {
-                                    //
-                                    for (
-                                        let index = 0;
-                                        index < tripLog[sameTripTrxs[0].tripId].length;
-                                        index++
-                                    ) {
-                                        const isNear = geolib.isPointWithinRadius(
-                                            {
-                                                latitude: poly.latitude,
-                                                longitude: poly.longitude,
-                                            },
-                                            {
-                                                latitude:
-                                                    tripLog[sameTripTrxs[0].tripId][index].latitude,
-                                                longitude:
-                                                    tripLog[sameTripTrxs[0].tripId][index].longitude,
-                                            },
-                                            200
-                                        );
-                                        //
-                                        if (isNear) {
-                                            arrIb.push(poly.sequence);
-                                            break;
-                                        }
-                                    }
-                                });
-                            }
-                            const uniqueStop = [...new Set(arrIb)];
+                            const geoCache = getTripGeoCache(sameTripTrxs[0]);
+                            const uniqueStopCount = geoCache.stopSequenceHits.size;
                             if (
                                 sameTripTrxs[0].endedAt &&
                                 (routeStops[sameTripTrxs[0].routeId]?.filter(
@@ -1259,80 +1340,18 @@ export const handler = async (event) => {
                                 )?.length *
                                     15) /
                                 100 <=
-                                uniqueStop.length
+                                uniqueStopCount
                             ) {
                                 totalByTrip.statusJ = "Complete";
                             }
-                            totalByTrip.busStops = uniqueStop.length;
+                            totalByTrip.busStops = uniqueStopCount;
                         }
                         // for buStops travel end
 
                         //
                         if (sameTripTrxs[0]?.apadPolygon?.length > 0) {
-                            const decodedPolyline = PolylineUtils.decode(
-                                sameTripTrxs[0].apadPolygon
-                            );
-                            const arrIb = [];
-                            const arrIbBetween = [];
-                            if (
-                                decodedPolyline.length > 0 &&
-                                tripLog[sameTripTrxs[0].tripId]?.length > 0
-                            ) {
-                                decodedPolyline?.forEach((poly, index) => {
-                                    if (index === 0 || index === 5) {
-                                        for (
-                                            let index = 0;
-                                            index < tripLog[sameTripTrxs[0].tripId].length;
-                                            index++
-                                        ) {
-                                            const isNear = geolib.isPointWithinRadius(
-                                                { latitude: poly[0], longitude: poly[1] },
-                                                {
-                                                    latitude:
-                                                        tripLog[sameTripTrxs[0].tripId][index].latitude,
-                                                    longitude:
-                                                        tripLog[sameTripTrxs[0].tripId][index].longitude,
-                                                },
-                                                200
-                                            );
-                                            //
-                                            if (isNear) {
-                                                arrIb.push(poly);
-                                                break;
-                                            }
-                                        }
-                                    }
-                                });
-                                for (
-                                    let index = 1;
-                                    index < decodedPolyline.length - 1;
-                                    index++
-                                ) {
-                                    const element = decodedPolyline[index];
-                                    for (
-                                        let index = 0;
-                                        index < tripLog[sameTripTrxs[0].tripId].length;
-                                        index++
-                                    ) {
-                                        const isNear = geolib.isPointWithinRadius(
-                                            { latitude: element[0], longitude: element[1] },
-                                            {
-                                                latitude:
-                                                    tripLog[sameTripTrxs[0].tripId][index].latitude,
-                                                longitude:
-                                                    tripLog[sameTripTrxs[0].tripId][index].longitude,
-                                            },
-                                            200
-                                        );
-                                        if (isNear) {
-                                            arrIbBetween.push(element);
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-
-                            if (arrIb?.length >= 2 && arrIbBetween?.length >= 1) {
+                            const geoCache = getTripGeoCache(sameTripTrxs[0]);
+                            if (geoCache.apadStartHits >= 2 && geoCache.apadBetweenHits >= 1) {
                                 totalByTrip.status = "Complete";
                             }
                         }
@@ -1968,44 +1987,8 @@ export const handler = async (event) => {
                                         ({ directionId }) => directionId == sameTripTrxs[0].obIb
                                     )?.length > 0
                                 ) {
-                                    const decodedPolyline = routeStops[
-                                        sameTripTrxs[0].routeId
-                                    ]?.filter(
-                                        ({ directionId }) => directionId == sameTripTrxs[0].obIb
-                                    );
-                                    const arrIb = [];
-                                    if (
-                                        decodedPolyline.length > 0 &&
-                                        tripLog[sameTripTrxs[0].tripId]?.length > 0
-                                    ) {
-                                        decodedPolyline?.forEach((poly, index) => {
-                                            //
-                                            for (
-                                                let index = 0;
-                                                index < tripLog[sameTripTrxs[0].tripId].length;
-                                                index++
-                                            ) {
-                                                const isNear = geolib.isPointWithinRadius(
-                                                    {
-                                                        latitude: poly.latitude,
-                                                        longitude: poly.longitude,
-                                                    },
-                                                    {
-                                                        latitude:
-                                                            tripLog[sameTripTrxs[0].tripId][index].latitude,
-                                                        longitude:
-                                                            tripLog[sameTripTrxs[0].tripId][index].longitude,
-                                                    },
-                                                    200
-                                                );
-                                                if (isNear) {
-                                                    arrIb.push(poly.sequence);
-                                                    break;
-                                                }
-                                            }
-                                        });
-                                    }
-                                    const uniqueStop = [...new Set(arrIb)];
+                                    const geoCache = getTripGeoCache(sameTripTrxs[0]);
+                                    const uniqueStopCount = geoCache.stopSequenceHits.size;
                                     if (
                                         sameTripTrxs[0].endedAt &&
                                         (routeStops[sameTripTrxs[0].routeId]?.filter(
@@ -2013,80 +1996,16 @@ export const handler = async (event) => {
                                         )?.length *
                                             15) /
                                         100 <=
-                                        uniqueStop.length
+                                        uniqueStopCount
                                     ) {
                                         totalByTrip.statusJ = "Complete";
                                     }
-                                    totalByTrip.busStops = uniqueStop.length;
+                                    totalByTrip.busStops = uniqueStopCount;
                                 }
 
                                 if (sameTripTrxs[0]?.apadPolygon?.length > 0) {
-                                    const decodedPolyline = PolylineUtils.decode(
-                                        sameTripTrxs[0].apadPolygon
-                                    );
-                                    const arrIb = [];
-                                    const arrIbBetween = [];
-                                    if (
-                                        decodedPolyline.length > 0 &&
-                                        tripLog[sameTripTrxs[0].tripId]?.length > 0
-                                    ) {
-                                        decodedPolyline?.forEach((poly, index) => {
-                                            if (index === 0 || index === 5) {
-                                                for (
-                                                    let index = 0;
-                                                    index < tripLog[sameTripTrxs[0].tripId].length;
-                                                    index++
-                                                ) {
-                                                    const isNear = geolib.isPointWithinRadius(
-                                                        { latitude: poly[0], longitude: poly[1] },
-                                                        {
-                                                            latitude:
-                                                                tripLog[sameTripTrxs[0].tripId][index].latitude,
-                                                            longitude:
-                                                                tripLog[sameTripTrxs[0].tripId][index]
-                                                                    .longitude,
-                                                        },
-                                                        200
-                                                    );
-                                                    if (isNear) {
-                                                        arrIb.push(poly);
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        });
-                                        for (
-                                            let index = 1;
-                                            index < decodedPolyline.length - 1;
-                                            index++
-                                        ) {
-                                            const element = decodedPolyline[index];
-                                            for (
-                                                let index = 0;
-                                                index < tripLog[sameTripTrxs[0].tripId].length;
-                                                index++
-                                            ) {
-                                                const isNear = geolib.isPointWithinRadius(
-                                                    { latitude: element[0], longitude: element[1] },
-                                                    {
-                                                        latitude:
-                                                            tripLog[sameTripTrxs[0].tripId][index].latitude,
-                                                        longitude:
-                                                            tripLog[sameTripTrxs[0].tripId][index].longitude,
-                                                    },
-                                                    200
-                                                );
-                                                //
-                                                if (isNear) {
-                                                    // check if inbound and scheduled?
-                                                    arrIbBetween.push(element);
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    if (arrIb?.length >= 2 && arrIbBetween?.length >= 1) {
+                                    const geoCache = getTripGeoCache(sameTripTrxs[0]);
+                                    if (geoCache.apadStartHits >= 2 && geoCache.apadBetweenHits >= 1) {
                                         totalByTrip.status = "Complete";
                                     }
                                 }
