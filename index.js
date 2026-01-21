@@ -641,10 +641,10 @@ export const handler = async (event) => {
             let idx = 1;
             RD.forEach(({ trxs, datetime_ }) => {
                 let scheduleDay;
-    
+
                 try {
                     const day = (datetime_.match(/\((.*?)\)/)[1].toLowerCase());
-    
+
                     if (day == 'sun') scheduleDay = 'sunday';
                     else if (day == 'mon') scheduleDay = 'monday';
                     else if (day == 'tue') scheduleDay = 'tuesday';
@@ -653,27 +653,27 @@ export const handler = async (event) => {
                     else if (day == 'fri') scheduleDay = 'friday';
                     else if (day == 'sat') scheduleDay = 'saturday';
                     else scheduleDay = '';
-    
+
                     // console.log('scheuled day: ', scheduleDay);
                     // console.log('day: ', day);
 
                     if (!scheduleDay) return;
-                    
+
                     const groupedTrxsByRoute = _.groupBy(
                         trxs.filter(trx => !trx.adHoc), // Exclude adHoc trips
                         'routeId'
                     );
-    
+
                     const groupedTrxsByRouteDirection = _.mapValues(groupedTrxsByRoute, (routeData) =>
                         _.groupBy(routeData, 'obIb')
                     );
-    
+
                     const schedulesGroupedByDay = _.mapValues(groupedTrxsByRouteDirection, (directionData) =>
                         _.mapValues(directionData, (directionGroup) =>
                             _.groupBy(directionGroup, 'scheduledAt')
                         )
                     );
-    
+
                     const groupedData = schedulesGroupedByDay;
                     if (!groupedData || Object.keys(groupedData).length === 0) {
                         console.warn('groupedData is empty or invalid.');
@@ -682,11 +682,11 @@ export const handler = async (event) => {
 
                     Object.keys(groupedData).forEach(key => {
                         const routeDirectionData = groupedData[key];
-                        
+
                         // Check for loop route scenario
                         const directions = [0, 1, 2]; // Outbound, Inbound, Loop
                         const existingDirections = directions.filter(dir => routeDirectionData[dir]);
-                    
+
                         let schedule;
                         try {
                             schedule = timetable[key];
@@ -694,17 +694,17 @@ export const handler = async (event) => {
                                 console.warn(`No schedule found for route ${key}`);
                                 return;
                             }
-                        } catch(error) {
+                        } catch (error) {
                             console.warn(`Error accessing timetable for route ${key}:`, error);
                             return;
                         }
-                    
+
                         // If no data exists for any direction
                         if (existingDirections.length === 0) {
                             console.warn(`No data found for any direction in route ${key}`);
                             return;
                         }
-                    
+
                         // Process each existing direction
                         existingDirections.forEach(direction => {
                             const directionData = routeDirectionData[direction];
@@ -724,19 +724,19 @@ export const handler = async (event) => {
                             // console.log('routeId: ', routeId)
 
                             // console.log(directionData)
-                    
+
                             // Validate direction schedules
                             if (!directionSchedules || directionSchedules.length === 0) {
                                 console.warn(`No schedules found for direction ${direction} in route ${key}`);
                                 return;
                             }
-                    
+
                             const directionKeys = Object.keys(directionData);
                             const directionKeysConverted = directionKeys.map(k => ({
                                 original: k,
                                 converted: moment(k).utcOffset(8).format("HH:mm:ss")
                             }));
-                    
+
                             // console.log('directionSchedules: ', directionSchedules);
 
                             // Find missing schedules
@@ -747,18 +747,18 @@ export const handler = async (event) => {
                             // console.log('Direction Keys (UTC+8):', directionKeysConverted);
                             // console.log('Schedules (UTC+8):', directionSchedules.map(s => s.start_time));
                             // console.log('Missing Schedules:', missingSchedules);
-                            
+
                             // Process missing schedules
                             missingSchedules.forEach(sch => {
 
-                                const missingDate = directionKeysConverted.length > 0 
-                                    ? directionKeysConverted[0].original 
+                                const missingDate = directionKeysConverted.length > 0
+                                    ? directionKeysConverted[0].original
                                     : null;
-                                
+
                                 const dateInGMT8 = missingDate
                                     ? moment(missingDate).utcOffset(8).format("YYYY-MM-DD")
                                     : "N/A";
-                                        
+
                                 const scheduledTime = `${dateInGMT8} ${sch.start_time}`;
                                 const scheduledEndTime = `${dateInGMT8} ${sch.end_time}`;
 
@@ -806,7 +806,7 @@ export const handler = async (event) => {
                                     "kmRate": null,
                                     "VehicleAge": null,
                                     "trip_mileage": null,
-                                    "localDate":moment(scheduledTime).format('DD-MM-YYYY (ddd)')
+                                    "localDate": moment(scheduledTime).format('DD-MM-YYYY (ddd)')
                                 };
 
                                 const skeleton = {
@@ -838,7 +838,7 @@ export const handler = async (event) => {
                                     "localTimeGroup_": moment(scheduledTime).format('DD-MM-YYYY (ddd)'),
                                     "trxs": [trxsSkeleton]
                                 }
-                    
+
                                 const transaction = returnData.find(item =>
                                     item.trxs.some(trx => trx.routeId === routeId)
                                 );
@@ -875,7 +875,7 @@ export const handler = async (event) => {
                     const scheduledAtB = new Date(b[0]?.scheduledAt).getTime();
                     return scheduledAtA - scheduledAtB; // Ascending order of scheduledAt
                 });
-                
+
             uniqueTrips.forEach((sameTripTrxs) => {
 
                 //
@@ -1054,8 +1054,8 @@ export const handler = async (event) => {
                                 const filteredStopId = filteredLogs[0].stopName;
                                 const filteredSequence = filteredLogs[0].stopName;
 
-                                filteredLogs[0].sequence =  filteredSequence == "null" || filteredName == null ? tripLogsToScan[0].sequence : filteredSequence;
-                                filteredLogs[0].stopId =  filteredStopId == "null" || filteredName == null ? tripLogsToScan[0].stopId : filteredStopId;
+                                filteredLogs[0].sequence = filteredSequence == "null" || filteredName == null ? tripLogsToScan[0].sequence : filteredSequence;
+                                filteredLogs[0].stopId = filteredStopId == "null" || filteredName == null ? tripLogsToScan[0].stopId : filteredStopId;
                                 filteredLogs[0].stopName = filteredName == "null" || filteredName == null ? tripLogsToScan[0].stopName : filteredName;
                             }
 
@@ -1079,10 +1079,10 @@ export const handler = async (event) => {
                                 let pointsExitingFirstRadius = [];
                                 let pointStartInFirstCheckpoint = false;
                                 let reachedOtherCheckpoints = false;
-                            
+
                                 for (let i = 0; i < filteredLogs?.length; i++) {
                                     const record = filteredLogs[i];
-                            
+
                                     const isWithinFirstCheckpoint = geolib.isPointWithinRadius(
                                         {
                                             latitude: record.latitude,
@@ -1094,35 +1094,34 @@ export const handler = async (event) => {
                                         },
                                         isRouteSbst ? 100 : 200
                                     );
-                            
+
                                     if (isWithinFirstCheckpoint) {
-                                        pointsExitingFirstRadius = []; 
+                                        pointsExitingFirstRadius = [];
                                         pointStartInFirstCheckpoint = true;
                                     } else if (pointStartInFirstCheckpoint) {
                                         pointsExitingFirstRadius.push(record);
+                                        // skip the 1st checkpoint
+                                        checkpoints.slice(1).forEach((c) => {
+                                            const isWithinRadiusRestCheckpoints = geolib.isPointWithinRadius(
+                                                {
+                                                    latitude: record.latitude,
+                                                    longitude: record.longitude,
+                                                },
+                                                {
+                                                    latitude: c[0],
+                                                    longitude: c[1]
+                                                },
+                                                200
+                                            );
+
+                                            if (isWithinRadiusRestCheckpoints)
+                                                reachedOtherCheckpoints = true;
+                                        });
+
+                                        if (reachedOtherCheckpoints) break;
                                     }
-
-                                    // skip the 1st checkpoint
-                                    checkpoints.slice(1).forEach((c) => {
-                                        const isWithinRadiusRestCheckpoints = geolib.isPointWithinRadius(
-                                            {
-                                                latitude: record.latitude,
-                                                longitude: record.longitude,
-                                            },
-                                            {
-                                                latitude: c[0],
-                                                longitude: c[1]
-                                            },
-                                            200
-                                        );
-
-                                        if (isWithinRadiusRestCheckpoints) 
-                                            reachedOtherCheckpoints = true;
-                                    });
-
-                                    if (reachedOtherCheckpoints) break;
                                 }
-                            
+
                                 // Capture the timestamp from the first point outside the radius
                                 timestampOfInterest = pointsExitingFirstRadius[0]?.timestamp;
                             }
@@ -1131,7 +1130,7 @@ export const handler = async (event) => {
                                 //  Analyze the first 250 records in tripLogsToScan
                                 for (let i = 0; i < Math.min(250, filteredLogs?.length); i++) {
                                     const record = filteredLogs[i];
-    
+
                                     if (
                                         record.sequence &&
                                         record.sequence > highestSequence &&
@@ -1140,19 +1139,19 @@ export const handler = async (event) => {
                                     ) {
                                         highestSequence = record.sequence;
                                     }
-    
+
                                     if (!stopNameConditionSatisfied) {
                                         // Check the condition only if it hasn't been satisfied yet
                                         if (record.stopName.trim().toLowerCase() === startPoint.trim().toLowerCase()) {
                                             stopNameConditionSatisfied = true;
                                         }
                                     }
-    
+
                                     if (stopNameConditionSatisfied) {
                                         // Once stopNameConditionSatisfied is true, check speed condition consecutively
                                         if (parseFloat(record.speed) >= 20) {
                                             speedGreaterThan20Count++;
-    
+
                                             if (speedGreaterThan20Count === 5) {
                                                 if (highestSequence == startSequence) {
                                                     // If sequence has been encountered, take the timestamp of the first occurrence in history log
@@ -1174,10 +1173,10 @@ export const handler = async (event) => {
 
                             if ((timestampOfInterest === null || timestampOfInterest === undefined) && filteredLogs?.length > 0) {
                                 timestampOfInterest = filteredLogs[0]?.timestamp;
-                            
+
                                 if (timestampOfInterest) {
                                     const timestampDate = momentTimezone(+timestampOfInterest, "x").format("DD/MM/YYYY");
-                            
+
                                     if (
                                         sameTripTrxs?.[0]?.startedAt &&
                                         timestampDate !== momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
@@ -1186,7 +1185,7 @@ export const handler = async (event) => {
                                             momentTimezone(+log.timestamp, "x").format("DD/MM/YYYY") ===
                                             momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
                                         );
-                            
+
                                         if (matchingLog) {
                                             timestampOfInterest = matchingLog.timestamp;
                                         } else {
@@ -1638,10 +1637,10 @@ export const handler = async (event) => {
 
                                 if (tripLog[sameTripTrxs[0].tripId]) {
                                     const tripLogsToScan = tripLog[sameTripTrxs[0].tripId];
-        
+
                                     const scheduledTimeStart = sameTripTrxs[0].scheduledAt;
                                     const scheduledMoment = moment(scheduledTimeStart);
-    
+
                                     // Filter tripLogsToScan to only include rows where the timestamp meets the condition
                                     const filteredLogs = tripLogsToScan
                                         .filter((record) => {
@@ -1649,7 +1648,7 @@ export const handler = async (event) => {
                                             return recordMoment.isSameOrAfter(scheduledMoment.clone().subtract(15, 'minutes'));
                                         })
                                         .map((record) => JSON.parse(JSON.stringify(record))); // Break reference
-    
+
                                     const startPoint =
                                         routeStops[sameTripTrxs[0].routeId]?.filter(
                                             ({ directionId }) => directionId == sameTripTrxs[0].obIb
@@ -1662,7 +1661,7 @@ export const handler = async (event) => {
                                                     return obj.sequence < res.sequence ? obj : res;
                                                 })?.name
                                             : "";
-        
+
                                     const startSequence =
                                         routeStops[sameTripTrxs[0].routeId]?.filter(
                                             ({ directionId }) => directionId == sameTripTrxs[0].obIb
@@ -1675,22 +1674,22 @@ export const handler = async (event) => {
                                                     return obj.sequence < res.sequence ? obj : res;
                                                 })?.sequence
                                             : "";
-        
+
                                     let timestampOfInterest = null;
                                     let speedGreaterThan20Count = 0;
                                     let stopNameConditionSatisfied = false;
                                     let highestSequence = 0; // Initialize highestSequence
-        
+
                                     if (filteredLogs?.length > 0 && tripLogsToScan?.length > 0) {
                                         const filteredName = filteredLogs[0].stopName;
                                         const filteredStopId = filteredLogs[0].stopName;
                                         const filteredSequence = filteredLogs[0].stopName;
-    
-                                        filteredLogs[0].sequence =  filteredSequence == "null" || filteredName == null ? tripLogsToScan[0].sequence : filteredSequence;
-                                        filteredLogs[0].stopId =  filteredStopId == "null" || filteredName == null ? tripLogsToScan[0].stopId : filteredStopId;
+
+                                        filteredLogs[0].sequence = filteredSequence == "null" || filteredName == null ? tripLogsToScan[0].sequence : filteredSequence;
+                                        filteredLogs[0].stopId = filteredStopId == "null" || filteredName == null ? tripLogsToScan[0].stopId : filteredStopId;
                                         filteredLogs[0].stopName = filteredName == "null" || filteredName == null ? tripLogsToScan[0].stopName : filteredName;
                                     }
-    
+
                                     // 1. decode virtual checkpoints
                                     // 2. for outbound, use the first checkpoint, use the last checkpoint for inbound
                                     // 3. check in the trip log, when its m location is in the radius of 200m of the checkpoint
@@ -1711,10 +1710,10 @@ export const handler = async (event) => {
                                         let pointsExitingFirstRadius = [];
                                         let pointStartInFirstCheckpoint = false;
                                         let reachedOtherCheckpoints = false;
-                                    
+
                                         for (let i = 0; i < filteredLogs?.length; i++) {
                                             const record = filteredLogs[i];
-                                    
+
                                             const isWithinFirstCheckpoint = geolib.isPointWithinRadius(
                                                 {
                                                     latitude: record.latitude,
@@ -1726,45 +1725,43 @@ export const handler = async (event) => {
                                                 },
                                                 isRouteSbst ? 100 : 200
                                             );
-                                    
+
                                             if (isWithinFirstCheckpoint) {
-                                                pointsExitingFirstRadius = []; 
+                                                pointsExitingFirstRadius = [];
                                                 pointStartInFirstCheckpoint = true;
                                             } else if (pointStartInFirstCheckpoint) {
                                                 pointsExitingFirstRadius.push(record);
+                                                // skip the 1st checkpoint
+                                                checkpoints.slice(1).forEach((c) => {
+                                                    const isWithinRadiusRestCheckpoints = geolib.isPointWithinRadius(
+                                                        {
+                                                            latitude: record.latitude,
+                                                            longitude: record.longitude,
+                                                        },
+                                                        {
+                                                            latitude: c[0],
+                                                            longitude: c[1]
+                                                        },
+                                                        200
+                                                    );
+
+                                                    if (isWithinRadiusRestCheckpoints)
+                                                        reachedOtherCheckpoints = true;
+                                                });
+
+                                                if (reachedOtherCheckpoints) break;
                                             }
-
-                                            // skip the 1st checkpoint
-                                            checkpoints.slice(1).forEach((c) => {
-                                                const isWithinRadiusRestCheckpoints = geolib.isPointWithinRadius(
-                                                    {
-                                                        latitude: record.latitude,
-                                                        longitude: record.longitude,
-                                                    },
-                                                    {
-                                                        latitude: c[0],
-                                                        longitude: c[1]
-                                                    },
-                                                    200
-                                                );
-
-                                                if (isWithinRadiusRestCheckpoints) 
-                                                    reachedOtherCheckpoints = true;
-                                            });
-
-                                            if (reachedOtherCheckpoints) break;
                                         }
-                                    
+
                                         // Capture the timestamp from the first point outside the radius
                                         timestampOfInterest = pointsExitingFirstRadius[0]?.timestamp;
                                     }
-    Z
-    
+
                                     if (timestampOfInterest === null || timestampOfInterest === undefined) {
                                         //  Analyze the first 250 records in tripLogsToScan
                                         for (let i = 0; i < Math.min(250, filteredLogs?.length); i++) {
                                             const record = filteredLogs[i];
-            
+
                                             if (
                                                 record.sequence &&
                                                 record.sequence > highestSequence &&
@@ -1773,19 +1770,19 @@ export const handler = async (event) => {
                                             ) {
                                                 highestSequence = record.sequence;
                                             }
-            
+
                                             if (!stopNameConditionSatisfied) {
                                                 // Check the condition only if it hasn't been satisfied yet
                                                 if (record.stopName.trim().toLowerCase() === startPoint.trim().toLowerCase()) {
                                                     stopNameConditionSatisfied = true;
                                                 }
                                             }
-            
+
                                             if (stopNameConditionSatisfied) {
                                                 // Once stopNameConditionSatisfied is true, check speed condition consecutively
                                                 if (parseFloat(record.speed) >= 20) {
                                                     speedGreaterThan20Count++;
-            
+
                                                     if (speedGreaterThan20Count === 5) {
                                                         if (highestSequence == startSequence) {
                                                             // If sequence has been encountered, take the timestamp of the first occurrence in history log
@@ -1804,13 +1801,13 @@ export const handler = async (event) => {
                                             }
                                         }
                                     }
-        
+
                                     if ((timestampOfInterest === null || timestampOfInterest === undefined) && filteredLogs?.length > 0) {
                                         timestampOfInterest = filteredLogs[0]?.timestamp;
-                                    
+
                                         if (timestampOfInterest) {
                                             const timestampDate = momentTimezone(+timestampOfInterest, "x").format("DD/MM/YYYY");
-                                    
+
                                             if (
                                                 sameTripTrxs?.[0]?.startedAt &&
                                                 timestampDate !== momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
@@ -1819,7 +1816,7 @@ export const handler = async (event) => {
                                                     momentTimezone(+log.timestamp, "x").format("DD/MM/YYYY") ===
                                                     momentTimezone(sameTripTrxs[0].startedAt).format("DD/MM/YYYY")
                                                 );
-                                    
+
                                                 if (matchingLog) {
                                                     timestampOfInterest = matchingLog.timestamp;
                                                 } else {
@@ -1830,23 +1827,23 @@ export const handler = async (event) => {
                                             console.warn('Timestamp of the first log is undefined.');
                                         }
                                     }
-        
+
                                     totalByTrip.actualStart = momentTimezone(
                                         +timestampOfInterest,
                                         "x"
                                     ).format("HH:mm");
-        
+
                                     totalByTrip.actualStartWithSeconds = momentTimezone(
                                         +timestampOfInterest,
                                         "x"
                                     ).format("HH:mm:ss");
-        
+
                                     totalByTrip.actualEndWithSeconds = momentTimezone(
                                         sameTripTrxs[0].endedAt
                                     ).isValid()
                                         ? momentTimezone(sameTripTrxs[0].endedAt).format("HH:mm:ss")
                                         : "";
-        
+
                                     const scheduledTimeP = momentTimezone(
                                         sameTripTrxs[0].scheduledAt
                                     );
@@ -1854,7 +1851,7 @@ export const handler = async (event) => {
                                         +timestampOfInterest,
                                         "x"
                                     );
-        
+
                                     const isPunctual =
                                         actualStartTimeP?.isBetween(
                                             scheduledTimeP.clone().subtract(10, "minutes"),
@@ -1880,7 +1877,7 @@ export const handler = async (event) => {
                                         totalByTrip.actualStartWithSeconds = '-';
                                         totalByTrip.actualEndWithSeconds = '-';
                                     }
-        
+
                                     totalByTrip.punctuality = "NOT PUNCTUAL";
                                 }
 
