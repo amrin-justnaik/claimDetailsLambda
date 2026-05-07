@@ -70,6 +70,9 @@ export const handler = async (event) => {
         jobId
     } = event;
 
+    const routeDirectionStopMeta = new Map();
+    const EMPTY_STOP_META = { stops: [], startPoint: "", startSequence: "", stopCount: 0 };
+   
     // Your Lambda function logic here
     console.log(
         `from: ${from}, to: ${to}, timestamp: ${timestamp}, route: ${route}`
@@ -89,11 +92,13 @@ export const handler = async (event) => {
             apadStartHits: 0,
             apadBetweenHits: 0,
             stopSequenceHits: new Set(),
+            totalStops: 0,
         };
 
         if (logPoints.length > 0) {
             if (row?.apadPolygon?.length > 0) {
                 const decodedPolyline = PolylineUtils.decode(row.apadPolygon);
+                result.totalStops = decodedPolyline.length;
                 if (decodedPolyline.length > 0) {
                     const startIndices = [0, 5];
                     for (const idx of startIndices) {
@@ -162,6 +167,11 @@ export const handler = async (event) => {
         tripGeoCache.set(cacheKey, result);
         return result;
     };
+
+    const getRouteDirectionKey = (routeId, directionId) => `${routeId}|${directionId}`;
+
+    const getRouteDirectionMeta = (routeId, directionId) =>
+        routeDirectionStopMeta.get(getRouteDirectionKey(routeId, directionId)) || EMPTY_STOP_META;
 
     if (!timestamp)
         return {
@@ -327,6 +337,22 @@ export const handler = async (event) => {
                             [data.stops[0].routeId]: data.stops,
                         };
                     }
+                });
+
+                const routeStopsIndexStartedAt = 0;
+                Object.entries(routeStops).forEach(([routeId, stops]) => {
+                    const groupedByDirection = _.groupBy(stops, "directionId");
+                    Object.entries(groupedByDirection).forEach(([directionId, directionStops]) => {
+                        const startStop = directionStops.reduce((res, obj) =>
+                            obj.sequence < res.sequence ? obj : res
+                        );
+                        routeDirectionStopMeta.set(getRouteDirectionKey(routeId, directionId), {
+                            stops: directionStops,
+                            startPoint: startStop?.name || "",
+                            startSequence: startStop?.sequence ?? "",
+                            stopCount: directionStops.length,
+                        });
+                    });
                 });
             } catch (error) {
                 console.error("Error in fetching routes and stops:", error);
@@ -904,6 +930,9 @@ export const handler = async (event) => {
                     noOfOku: 0,
                     trxsTime: [],
                 };
+
+                const directionStopMeta = getRouteDirectionMeta(sameTripTrxs[0]?.routeId, sameTripTrxs[0]?.obIb);
+
                 sameTripTrxs.forEach(
                     ({
                         userId,
@@ -1346,13 +1375,22 @@ export const handler = async (event) => {
                             }
                             totalByTrip.busStops = uniqueStopCount;
                         }
-                        // for buStops travel end
 
-                        //
+                        // for buStops travel end
                         if (sameTripTrxs[0]?.apadPolygon?.length > 0) {
                             const geoCache = getTripGeoCache(sameTripTrxs[0]);
-                            if (geoCache.apadStartHits >= 2 && geoCache.apadBetweenHits >= 1) {
-                                totalByTrip.status = "Complete";
+                            totalByTrip.geoCache = geoCache;
+
+                            const uniqueStopCount = geoCache.stopSequenceHits.size;
+                            const totalStops = directionStopMeta.stopCount;
+                            if (sameTripTrxs[0].isSbst) {
+                                if (totalStops > 0 && uniqueStopCount >= totalStops) {
+                                    totalByTrip.status = "Complete";
+                                }
+                            } else {
+                                if (geoCache.apadStartHits >= 2 && geoCache.apadBetweenHits >= 1) {
+                                    totalByTrip.status = "Complete";
+                                }
                             }
                         }
                     }
