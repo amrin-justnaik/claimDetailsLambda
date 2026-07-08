@@ -173,6 +173,32 @@ export const handler = async (event) => {
     const getRouteDirectionMeta = (routeId, directionId) =>
         routeDirectionStopMeta.get(getRouteDirectionKey(routeId, directionId)) || EMPTY_STOP_META;
 
+    const getReportTime = (trx) => {
+        const reportTime = trx?.scheduledAt || trx?.startedAt || trx?.endedAt;
+        const parsedReportTime = momentTimezone(reportTime);
+        return parsedReportTime.isValid() ? parsedReportTime.valueOf() : Number.MAX_SAFE_INTEGER;
+    };
+
+    const sortReportGroupsByDate = (reportGroups) => {
+        const routeOrder = new Map();
+
+        reportGroups.forEach((group) => {
+            const routeId = group?.trxs?.[0]?.routeId;
+            if (!routeOrder.has(routeId)) routeOrder.set(routeId, routeOrder.size);
+        });
+
+        return reportGroups.sort((a, b) => {
+            const routeA = a?.trxs?.[0]?.routeId;
+            const routeB = b?.trxs?.[0]?.routeId;
+            const routeDiff = (routeOrder.get(routeA) ?? 0) - (routeOrder.get(routeB) ?? 0);
+            if (routeDiff !== 0) return routeDiff;
+
+            const dateA = Math.min(...(a?.trxs || []).map(getReportTime));
+            const dateB = Math.min(...(b?.trxs || []).map(getReportTime));
+            return dateA - dateB;
+        });
+    };
+
     if (!timestamp)
         return {
             statusCode: 500,
@@ -787,10 +813,11 @@ export const handler = async (event) => {
 
                                 const scheduledTime = `${dateInGMT8} ${sch.start_time}`;
                                 const scheduledEndTime = `${dateInGMT8} ${sch.end_time}`;
+                                const localDate = momentTimezone(scheduledTime).format('DD-MM-YYYY (ddd)');
 
                                 const trxsSkeleton = {
-                                    "scheduledAt": moment(scheduledTime).toISOString(),
-                                    "scheduledEndTime": moment(scheduledEndTime).toISOString(),
+                                    "scheduledAt": momentTimezone(scheduledTime).toISOString(),
+                                    "scheduledEndTime": momentTimezone(scheduledEndTime).toISOString(),
                                     "startedAt": null,
                                     "endedAt": null,
                                     "id": routeId,
@@ -832,11 +859,11 @@ export const handler = async (event) => {
                                     "kmRate": null,
                                     "VehicleAge": null,
                                     "trip_mileage": null,
-                                    "localDate": moment(scheduledTime).format('DD-MM-YYYY (ddd)')
+                                    "localDate": localDate
                                 };
 
                                 const skeleton = {
-                                    "datetime_": moment(scheduledTime).format('DD-MM-YYYY HH:mm:ss (ddd)'),
+                                    "datetime_": momentTimezone(scheduledTime).format('DD-MM-YYYY HH:mm:ss (ddd)'),
                                     "checkoutTime_": "-",
                                     "uniqueTrip_": {},
                                     "totalTripCount_": 0,
@@ -861,15 +888,20 @@ export const handler = async (event) => {
                                     "cashTotalRidership_": 0,
                                     "cashlessTotalAmount_": "0",
                                     "cashlessTotalRidership_": 0,
-                                    "localTimeGroup_": moment(scheduledTime).format('DD-MM-YYYY (ddd)'),
+                                    "localTimeGroup_": localDate,
                                     "trxs": [trxsSkeleton]
                                 }
 
                                 const transaction = returnData.find(item =>
+                                    item.localTimeGroup_ === localDate &&
                                     item.trxs.some(trx => trx.routeId === routeId)
                                 );
 
-                                transaction.trxs.push(trxsSkeleton);
+                                if (transaction) {
+                                    transaction.trxs.push(trxsSkeleton);
+                                } else {
+                                    returnData.push(skeleton);
+                                }
                                 idx += 1;
                             });
                         });
@@ -882,6 +914,8 @@ export const handler = async (event) => {
             console.log('normal return data');
         }
         // TODO ----- End here
+
+        sortReportGroupsByDate(returnData);
 
         // console.log(returnData[0].trxs)
         //
@@ -1540,9 +1574,9 @@ export const handler = async (event) => {
 
                     function sort_by_key(array) {
                         return array.sort(function (a, b) {
-                            var x = momentTimezone(a[0].scheduledAt).format("X");
-                            var y = momentTimezone((a = b[0].scheduledAt)).format("X");
-                            return x < y ? -1 : x > y ? 1 : 0;
+                            var x = momentTimezone(a[0].scheduledAt).valueOf();
+                            var y = momentTimezone(b[0].scheduledAt).valueOf();
+                            return x - y;
                         });
                     }
                     const uniqueTripsOrdered = sort_by_key(uniqueTrips);
